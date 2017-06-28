@@ -190,7 +190,6 @@ localparam CONF_STR1 =
 	"-;",
 	"F,BINDSK;",
 	"S,VHD;",
-	"O6,FDD/HDD,Enable,Disable;",
 	"-;",
 	"O3,Monochrome,No,Yes;",
 	"O4,Aspect ratio,4:3,16:9;",
@@ -198,7 +197,8 @@ localparam CONF_STR1 =
 	"-;",
 	"O1,CPU Speed,"
 };
-	
+
+
 localparam CONF_STR2 = 
 {
 	"MHz,"
@@ -208,19 +208,37 @@ localparam CONF_STR3 =
 {
 	"MHz;",
 	"O5,Model,BK0011M,BK0010;",
-	"-;",
-	"T2,Reset & Unload Disk;",
-	"V,v2.50.",`BUILD_DATE
+	"O6,FDD/HDD,Enable,Disable;",
+	"O9,"
 };
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>3)+2), .WIDE(1)) hps_io
+localparam CONF_A16M = 
+{
+	"A16M  "
+};
+
+localparam CONF_SMK512 = 
+{
+	"SMK512"
+};
+
+localparam CONF_STR4 = 
+{
+	",No,Yes;",
+	"-;",
+	"T2,Reset & Unload Disk;",
+	"V,v2.60.",`BUILD_DATE
+};
+
+hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>3)+($size(CONF_STR4)>>3)+($size(CONF_SMK512)>>3)+2), .WIDE(1)) hps_io
 (
 	.*,
-	.conf_str({CONF_STR1, freq_n, CONF_STR2, freq_t, CONF_STR3}),
+	.conf_str({CONF_STR1, freq_n, CONF_STR2, freq_t, CONF_STR3, status[5] ? CONF_A16M : CONF_SMK512, CONF_STR4}),
 	.ps2_kbd_led_use(3'b001),
 	.ps2_kbd_led_status({2'b00, ps2_caps_led}),
 
 	// unused
+	.ioctl_wait(0),
 	.img_size(),
 	.joystick_analog_0(),
 	.joystick_analog_1()
@@ -255,12 +273,12 @@ vm1_reset reset
 	.aclo(cpu_aclo)
 );
 
-// Wait for bk0011m.rom
+// Wait for bk0011m.rom or initial reset
 reg sys_ready = 0;
 always @(posedge clk_sys) begin
-	reg old_copy;
-	old_copy <= dsk_copy;
-	if(old_copy & ~dsk_copy) sys_ready <= 1;
+	reg old_rst;
+	old_rst <= status[0];
+	if(old_rst & ~status[0]) sys_ready <= 1;
 end
 
 vm1_se cpu
@@ -336,6 +354,7 @@ memory memory
 
 	.init(!plock),
 	.sysreg_sel(sysreg_sel),
+	.extension(status[9]),
 
 	.bus_dout(ram_data),
 	.bus_ack(ram_ack),

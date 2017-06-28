@@ -46,6 +46,7 @@ module memory
 	input  [15:0] ext_mode,
 	input         cold_start,
 	input         mode_start,
+	input         extension,
 
 	input  [15:0] bus_din,
 	output [15:0] bus_dout,
@@ -82,22 +83,20 @@ vram vram
 	.q(vram_data)
 );
 
-wire ram_ready;
+wire        ram_ready;
+wire [15:0] dram_dout;
 sdram ram
 (
 	.*,
 	.clk(clk_sys),	
 	.addr({ram_addr[24:1],1'b0}),
-	.dout(ram_dout),
+	.dout(dram_dout),
 	.din(ram_din),
 	.wtbt(ram_wtbt),
 	.we(ram_we && ram_wtbt),
 	.rd(ram_rd),
 	.ready(ram_ready)
 );
-
-wire [15:0] ram_dout;
-assign mem_copy_dout = ram_dout;
 
 //
 // Memory map
@@ -130,6 +129,33 @@ assign mem_copy_dout = ram_dout;
 `define MSTD_ROM   25'HFE000 // 
                              //
 `define NOMEM     25'H100000 // End of memory / No memory
+
+
+wire [15:0] bios_dout;
+reg         bios_we, bios_rd;
+bios bios
+(
+	.clock(clk_sys),
+	.address(ram_addr[16:1]),
+	.data(mem_copy_din),
+	.wren(bios_we),
+	.q(bios_dout)
+);
+
+always @(posedge clk_sys) begin
+	reg old_we, old_rd;
+	old_we <= ram_we;
+	old_rd <= ram_rd;
+
+	bios_we <= (~old_we && ram_we && (ram_addr>=`ROM_START) && (ram_addr<`NOMEM));
+	
+	if(~old_rd && ram_rd) begin
+		bios_rd <= (ram_addr>=`ROM_START) && (ram_addr<`NOMEM);
+	end
+end
+
+wire [15:0] ram_dout = bios_rd ? bios_dout : dram_dout;
+assign mem_copy_dout = ram_dout;
 
 
 //SMK512 extension (used in BK0011M)
@@ -375,11 +401,11 @@ assign start_addr = (ext_rom && cold_start && mode_start) ? cold_addr  :
                                                             8'b11000000; // Standard BK0011M
 
 wire [7:0] cold_addr = bk0010 ? start_a16m : start_smk512;
-wire       ext_rom   = disk_rom && cold_addr && !bk0010_stub;
+wire       ext_rom   = disk_rom && cold_addr && !bk0010_stub && extension;
 
-reg [7:0] start_a16m   = 8'd0;
-reg [7:0] start_smk512 = 8'd0;
-reg [4:0] page_avail = 5'b00010;
+reg [7:0] start_a16m   = 8'hE9;
+reg [7:0] start_smk512 = 8'hED;
+reg [4:0] page_avail = 5'b10011;
 always @(posedge clk_sys) begin
 	reg old_we;
 	old_we <= mem_copy_we;
@@ -437,7 +463,7 @@ wire [24:0] map11e = (addr[15:12] == 4'b1111)  ? (smk512_7 | addr[11:0]) :
                       smk512_page[addr[14:13]] ? (smk512_page[addr[14:13]] | addr[12:0]) : 25'H0;
 wire [24:0] map11  = (addr[15] && ext_rom && map11e) ? map11e : map11s;
 
-wire a16m_7 = (mem_copy ? mem_copy_we : bus_we) ? a16m_7wr : a16m_7en;
+wire        a16m_7 = (mem_copy ? mem_copy_we : bus_we) ? a16m_7wr : a16m_7en;
 wire [24:0] map10de   = ((addr[15:12] == 4'b1111) && !a16m_7) ? `NOMEM : a16m_page[addr[14:13]];
 wire [24:0] map10ds   = (addr[15:13] == 4'b101) ? `RAM_P02 : // two different pages because not aligned to 8kb
                         (addr[15:13] == 4'b110) ? `RAM_P03 : // ---/---
@@ -448,8 +474,8 @@ wire [24:0] map10     = ((addr[15] && disk_rom && map10d && !bk0010_stub) ? map1
 
 wire [24:0] vaddr = bk0010 ? map10 : map11;
 wire [24:0] ram_addr = (mem_copy && !mem_copy_virt) ? mem_copy_addr : vaddr;
-wire ro = (vaddr >= `ROM_START) || (ext_rom && (addr[15:12] == 4'b1000) && (bk0010 ? a16m_0ro : smk512_0ro));
-wire copy_we = mem_copy_we && (!mem_copy_virt || !ro);
+wire        ro = (vaddr >= `ROM_START) || (ext_rom && (addr[15:12] == 4'b1000) && (bk0010 ? a16m_0ro : smk512_0ro));
+wire        copy_we = mem_copy_we && (!mem_copy_virt || !ro);
 
 wire [15:0] top_addr = ((ext_rom && !ext_mode[2]) || (disk_rom && !ext_rom)) ? 16'o177000 : 16'o177600;
 
@@ -525,5 +551,65 @@ end
 
 // port B
 always@(posedge clock) q <= ram[rdaddr];
+
+endmodule
+
+
+module bios
+(
+	input	        clock,
+	input  [15:0] data,
+	input  [15:0] address,
+	input         wren,
+	output [15:0] q
+);
+
+altsyncram	altsyncram_component (
+			.address_a (address),
+			.address_b (address),
+			.clock0 (clock),
+			.data_a (data),
+			.wren_a (wren),
+			.q_b (q),
+			.aclr0 (1'b0),
+			.aclr1 (1'b0),
+			.addressstall_a (1'b0),
+			.addressstall_b (1'b0),
+			.byteena_a (1'b1),
+			.byteena_b (1'b1),
+			.clock1 (1'b1),
+			.clocken0 (1'b1),
+			.clocken1 (1'b1),
+			.clocken2 (1'b1),
+			.clocken3 (1'b1),
+			.data_b ({16{1'b1}}),
+			.eccstatus (),
+			.q_a (),
+			.rden_a (1'b1),
+			.rden_b (1'b1),
+			.wren_b (1'b0));
+
+defparam
+	altsyncram_component.address_aclr_b = "NONE",
+	altsyncram_component.address_reg_b = "CLOCK0",
+	altsyncram_component.clock_enable_input_a = "BYPASS",
+	altsyncram_component.clock_enable_input_b = "BYPASS",
+	altsyncram_component.clock_enable_output_b = "BYPASS",
+	altsyncram_component.init_file = "bios.mif",
+	altsyncram_component.intended_device_family = "Cyclone V",
+	altsyncram_component.lpm_type = "altsyncram",
+	altsyncram_component.numwords_a = 65536,
+	altsyncram_component.numwords_b = 65536,
+	altsyncram_component.operation_mode = "DUAL_PORT",
+	altsyncram_component.outdata_aclr_b = "NONE",
+	altsyncram_component.outdata_reg_b = "UNREGISTERED",
+	altsyncram_component.power_up_uninitialized = "FALSE",
+	altsyncram_component.read_during_write_mode_mixed_ports = "DONT_CARE",
+	altsyncram_component.widthad_a = 16,
+	altsyncram_component.widthad_b = 16,
+	altsyncram_component.width_a = 16,
+	altsyncram_component.width_b = 16,
+	altsyncram_component.width_byteena_a = 1;
+
 
 endmodule
