@@ -165,14 +165,13 @@ wire [31:0] sd_lba;
 wire  [2:0] sd_rd;
 wire  [2:0] sd_wr;
 wire        sd_ack;
-wire        sd_ack_conf;
-wire        sd_conf;
 wire  [7:0] sd_buff_addr;
 wire [15:0] sd_buff_dout;
 wire [15:0] sd_buff_din;
 wire        sd_buff_wr;
 
 wire  [2:0] img_mounted;
+wire        img_readonly;
 wire [63:0] img_size;
 
 wire        ioctl_download;
@@ -188,7 +187,7 @@ wire  [7:0] freq_t = status[5] ? "6" : "8";
 localparam CONF_STR1 = 
 {
 	"BK0011M;;",
-	"F,BINDSK;",
+	"F,BIN;",
 	"S1,DSK,Mount FDD(A);",
 	"S2,DSK,Mount FDD(B);",
 	"S0,VHD,Mount HDD;",
@@ -228,8 +227,8 @@ localparam CONF_STR4 =
 {
 	",No,Yes;",
 	"-;",
-	"T2,Reset & Unload Disk;",
-	"V,v2.60.",`BUILD_DATE
+	"T2,Reset & Unload Disks;",
+	"V,v3.00.",`BUILD_DATE
 };
 
 hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>3)+($size(CONF_STR4)>>3)+($size(CONF_SMK512)>>3)+2), .WIDE(1), .VDNUM(3)) hps_io
@@ -240,6 +239,8 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>
 	.ps2_kbd_led_status({2'b00, ps2_caps_led}),
 
 	// unused
+	.sd_conf(0),
+	.sd_ack_conf(),
 	.ioctl_wait(0),
 	.joystick_analog_0(),
 	.joystick_analog_1()

@@ -49,18 +49,19 @@ module hps_io #(parameter STRLEN=0, PS2DIV=1000, WIDE=0, VDNUM=1)
 	output reg [31:0] status,
 
 	// SD config
-	input             sd_conf,
-	output[VDNUM-1:0] img_mounted, // signaling that new image has been mounted
-	output reg [63:0] img_size,    // size of image in bytes - valid only for active bit in img_mounted
+	output reg [VD:0] img_mounted,  // signaling that new image has been mounted
+	output reg        img_readonly, // mounted as read only. valid only for active bit in img_mounted
+	output reg [63:0] img_size,     // size of image in bytes. valid only for active bit in img_mounted
 
 	// SD block level access
 	input      [31:0] sd_lba,
-	input [VDNUM-1:0] sd_rd,       // only single sd_rd can be active at any given time
-	input [VDNUM-1:0] sd_wr,       // only single sd_wr can be active at any given time
+	input      [VD:0] sd_rd,       // only single sd_rd can be active at any given time
+	input      [VD:0] sd_wr,       // only single sd_wr can be active at any given time
+	output reg        sd_ack,
 	
 	// do not use in new projects.
 	// CID and CSD are fake except CSD image size field.
-	output reg        sd_ack,
+	input             sd_conf,
 	output reg        sd_ack_conf,
 
 	// SD byte level access. Signals for 2-PORT altsyncram.
@@ -89,6 +90,7 @@ module hps_io #(parameter STRLEN=0, PS2DIV=1000, WIDE=0, VDNUM=1)
 
 localparam DW = (WIDE) ? 15 : 7;
 localparam AW = (WIDE) ?  7 : 8;
+localparam VD = VDNUM-1;
 
 wire        io_wait  = ioctl_wait;
 wire        io_enable= |HPS_BUS[35:34];
@@ -101,9 +103,6 @@ assign HPS_BUS[37]   = io_wait;
 assign HPS_BUS[36]   = clk_sys;
 assign HPS_BUS[32]   = io_wide;
 assign HPS_BUS[15:0] = io_dout;
-
-reg [VDNUM-1:0] mount_strobe = 0;
-assign          img_mounted  = mount_strobe;
 
 reg [7:0] cfg;
 assign buttons = cfg[1:0];
@@ -161,7 +160,7 @@ always@(posedge clk_sys) begin
 				endcase
 
 				sd_buff_addr <= 0;
-				mount_strobe <= 0;
+				img_mounted <= 0;
 			end else begin
 
 				case(cmd)
@@ -226,7 +225,10 @@ always@(posedge clk_sys) begin
 						end
 
 					// notify image selection
-					'h1c: mount_strobe <= io_din[VDNUM-1:0] ? io_din[VDNUM-1:0] : 1'b1;
+					'h1c: begin
+							img_mounted  <= io_din[VD:0] ? io_din[VD:0] : 1'b1;
+							img_readonly <= io_din[7];
+						end
 
 					// send image info
 					'h1d: if(byte_cnt<5) img_size[{byte_cnt-1'b1, 4'b0000} +:16] <= io_din;
@@ -420,11 +422,7 @@ always@(posedge clk_sys) begin
 					UIO_FILE_TX:
 						begin
 							if(io_din[7:0]) begin
-								case(ioctl_index) 
-											0: addr <= 25'h0E0000;
-											1: addr <= 25'h100000;
-									default: addr <= 25'h120000;
-								endcase
+								addr <= (ioctl_index) ? 25'h100000 : 25'h0E0000;
 								ioctl_download <= 1; 
 							end else begin
 								ioctl_addr <= addr;
