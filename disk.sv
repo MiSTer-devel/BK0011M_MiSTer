@@ -29,8 +29,8 @@ module disk
 	output        dsk_copy_rd,
 
 	output [31:0] sd_lba,
-	output reg    sd_rd,
-	output reg    sd_wr,
+	output reg [2:0] sd_rd,
+	output reg [2:0] sd_wr,
 
 	input         sd_ack,
 	input         sd_ack_conf,
@@ -41,8 +41,9 @@ module disk
 
 	output        sd_conf,
 
-	input         img_mounted,
-	
+	input   [2:0] img_mounted,
+	input  [31:0] img_size,
+
 	input         ioctl_download,
 	input         ioctl_wr,
 	input  [24:0] ioctl_addr,
@@ -238,7 +239,8 @@ typedef enum
 } io_state_t;
 
 always @(posedge clk_sys) begin
-	reg  old_access, old_mounted, old_reset;
+	reg  old_access, old_reset;
+	reg [2:0] old_mounted;
 
 	io_state_t io_state, io_cp_ret, io_rw_ret;
 
@@ -384,7 +386,7 @@ always @(posedge clk_sys) begin
 				ST_PAR4:
 					begin
 						// R0 - start block
-						lba       <= disk ? hdr_out + copy_din : copy_din;
+						lba       <= (disk>=2) ? hdr_out + copy_din : copy_din;
 						hdd_start <= hdr_out;
 						io_state  <= ST_R;
 					end
@@ -417,7 +419,7 @@ always @(posedge clk_sys) begin
 						addr_w    <= vaddr;
 						addr_r    <= vaddr;
 
-						if(disk) begin
+						if(disk>=2) begin
 							//VHD access
 							if((bus_addr != 16'o177132) || !mounted || !hdd_end || !hdd_start || (disk >= 125)) begin
 								error[7:0] <= 6;
@@ -637,7 +639,7 @@ always @(posedge clk_sys) begin
 	end
 
 	if(!io_busy) begin
-		if(!old_mounted && img_mounted) begin
+		if(!old_mounted[0] && img_mounted[0]) begin
 			mounted    <= 0;
 			conf       <= 1;
 			sd_rd      <= 1;

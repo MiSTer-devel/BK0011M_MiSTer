@@ -162,8 +162,8 @@ wire        forced_scandoubler;
 wire [31:0] status;
 
 wire [31:0] sd_lba;
-wire        sd_rd;
-wire        sd_wr;
+wire  [2:0] sd_rd;
+wire  [2:0] sd_wr;
 wire        sd_ack;
 wire        sd_ack_conf;
 wire        sd_conf;
@@ -172,7 +172,8 @@ wire [15:0] sd_buff_dout;
 wire [15:0] sd_buff_din;
 wire        sd_buff_wr;
 
-wire        img_mounted;
+wire  [2:0] img_mounted;
+wire [63:0] img_size;
 
 wire        ioctl_download;
 wire        ioctl_wr;
@@ -187,9 +188,10 @@ wire  [7:0] freq_t = status[5] ? "6" : "8";
 localparam CONF_STR1 = 
 {
 	"BK0011M;;",
-	"-;",
 	"F,BINDSK;",
-	"S,VHD;",
+	"S1,DSK,Mount FDD(A);",
+	"S2,DSK,Mount FDD(B);",
+	"S0,VHD,Mount HDD;",
 	"-;",
 	"O3,Monochrome,No,Yes;",
 	"O4,Aspect ratio,4:3,16:9;",
@@ -230,7 +232,7 @@ localparam CONF_STR4 =
 	"V,v2.60.",`BUILD_DATE
 };
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>3)+($size(CONF_STR4)>>3)+($size(CONF_SMK512)>>3)+2), .WIDE(1)) hps_io
+hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>3)+($size(CONF_STR4)>>3)+($size(CONF_SMK512)>>3)+2), .WIDE(1), .VDNUM(3)) hps_io
 (
 	.*,
 	.conf_str({CONF_STR1, freq_n, CONF_STR2, freq_t, CONF_STR3, status[5] ? CONF_A16M : CONF_SMK512, CONF_STR4}),
@@ -239,7 +241,6 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>
 
 	// unused
 	.ioctl_wait(0),
-	.img_size(),
 	.joystick_analog_0(),
 	.joystick_analog_1()
 );
@@ -566,6 +567,6 @@ wire [15:0] dsk_copy_dout;
 wire        dsk_copy_we;
 wire        dsk_copy_rd;
 
-disk disk(.*, .reset(cpu_dclo), .reset_full(status[2]), .bus_ack(disk_ack));
+disk disk(.*, .img_size(img_size[40:9]), .reset(cpu_dclo), .reset_full(status[2]), .bus_ack(disk_ack));
 
 endmodule
