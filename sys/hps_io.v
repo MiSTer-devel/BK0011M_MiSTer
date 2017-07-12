@@ -38,8 +38,8 @@ module hps_io #(parameter STRLEN=0, PS2DIV=1000, WIDE=0, VDNUM=1)
 	// parameter STRLEN and the actual length of conf_str have to match
 	input [(8*STRLEN)-1:0] conf_str,
 
-	output reg  [7:0] joystick_0,
-	output reg  [7:0] joystick_1,
+	output reg [15:0] joystick_0,
+	output reg [15:0] joystick_1,
 	output reg [15:0] joystick_analog_0,
 	output reg [15:0] joystick_analog_1,
 
@@ -128,7 +128,6 @@ wire [15:0] sd_cmd =
 	sd_rd[0]
 };
 
-
 always@(posedge clk_sys) begin
 	reg [15:0] cmd;
 	reg  [9:0] byte_cnt;   // counts bytes
@@ -166,8 +165,8 @@ always@(posedge clk_sys) begin
 				case(cmd)
 					// buttons and switches
 					'h01: cfg        <= io_din[7:0]; 
-					'h02: joystick_0 <= io_din[7:0];
-					'h03: joystick_1 <= io_din[7:0];
+					'h02: joystick_0 <= io_din;
+					'h03: joystick_1 <= io_din;
 
 					// store incoming ps2 mouse bytes 
 					'h04: begin

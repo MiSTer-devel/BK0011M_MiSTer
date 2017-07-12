@@ -155,8 +155,8 @@ wire        ps2_mouse_clk;
 wire        ps2_mouse_data;
 wire        ps2_caps_led;
 
-wire  [7:0] joystick_0;
-wire  [7:0] joystick_1;
+wire [15:0] joystick_0;
+wire [15:0] joystick_1;
 wire  [1:0] buttons;
 wire        forced_scandoubler;
 wire [31:0] status;
@@ -228,7 +228,7 @@ localparam CONF_STR4 =
 	",No,Yes;",
 	"-;",
 	"T2,Reset & Unload Disks;",
-	"V,v3.00.",`BUILD_DATE
+	"V,v3.01.",`BUILD_DATE
 };
 
 hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>3)+($size(CONF_STR4)>>3)+($size(CONF_SMK512)>>3)+2), .WIDE(1), .VDNUM(3)) hps_io
@@ -443,7 +443,7 @@ keyboard keyboard
 
 reg         joystick_or_mouse = 0;
 wire [15:0] port_data = port_sel ? (joystick_or_mouse ? mouse_state : joystick) : 16'd0;
-wire  [7:0] joystick =  joystick_0 | joystick_1;
+wire [15:0] joystick =  joystick_0 | joystick_1;
 
 always @(posedge clk_sys) begin
 	if(|joystick)        joystick_or_mouse <= 0;
