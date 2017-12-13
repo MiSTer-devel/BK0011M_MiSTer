@@ -2,7 +2,7 @@
 //
 //
 //
-// BK0011M for DE10-nano board
+// BK0011M for MiSTer
 // (C) 2017 Sorgelig
 //
 // This source file and all other files in this project is free software: 
@@ -23,46 +23,52 @@
 
 module emu
 (
-   //Master input clock
-   input         CLK_50M,
+	//Master input clock
+	input         CLK_50M,
 
 	//Async reset from top-level module.
 	//Can be used as initial reset.
 	input         RESET,
-	
+
 	//Must be passed to hps_io module
-	inout  [37:0] HPS_BUS,
+	inout  [43:0] HPS_BUS,
 
-   //Base video clock. Usually equals to CLK_SYS.
-   output        CLK_VIDEO,
+	//Base video clock. Usually equals to CLK_SYS.
+	output        CLK_VIDEO,
 
-   //Multiple resolutions are supported using different CE_PIXEL rates.
-   //Must be based on CLK_VIDEO
-   output        CE_PIXEL,
+	//Multiple resolutions are supported using different CE_PIXEL rates.
+	//Must be based on CLK_VIDEO
+	output        CE_PIXEL,
 
-   //Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
-   output  [7:0] VIDEO_ARX,
-   output  [7:0] VIDEO_ARY,
+	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
+	output  [7:0] VIDEO_ARX,
+	output  [7:0] VIDEO_ARY,
 
-   output  [7:0] VGA_R,
-   output  [7:0] VGA_G,
-   output  [7:0] VGA_B,
-   output        VGA_HS,    // positive pulse!
-   output        VGA_VS,    // positive pulse!
-   output        VGA_DE,    // = ~(VBlank | HBlank)
+	output  [7:0] VGA_R,
+	output  [7:0] VGA_G,
+	output  [7:0] VGA_B,
+	output        VGA_HS,    // positive pulse!
+	output        VGA_VS,    // positive pulse!
+	output        VGA_DE,    // = ~(VBlank | HBlank)
 
-   output        LED_USER,  // 1 - ON, 0 - OFF.
+	output        LED_USER,  // 1 - ON, 0 - OFF.
 
-	// b[1]: 0 - LED status is system status ORed with b[0]
+	// b[1]: 0 - LED status is system status OR'd with b[0]
 	//       1 - LED status is controled solely by b[0]
 	// hint: supply 2'b00 to let the system control the LED.
 	output  [1:0] LED_POWER,
 	output  [1:0] LED_DISK,
 
-   output [15:0] AUDIO_L,
-   output [15:0] AUDIO_R,
-   output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
-   input         TAPE_IN,
+	output [15:0] AUDIO_L,
+	output [15:0] AUDIO_R,
+	output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
+	input         TAPE_IN,
+
+	// SD-SPI
+	output        SD_SCK,
+	output        SD_MOSI,
+	input         SD_MISO,
+	output        SD_CS,
 
 	//High latency DDR3 RAM interface
 	//Use for non-critical time purposes
@@ -78,17 +84,17 @@ module emu
 	output        DDRAM_WE,
 
 	//SDRAM interface with lower latency
-   output        SDRAM_CLK,
-   output        SDRAM_CKE,
-   output [12:0] SDRAM_A,
-   output  [1:0] SDRAM_BA,
-   inout  [15:0] SDRAM_DQ,
-   output        SDRAM_DQML,
-   output        SDRAM_DQMH,
-   output        SDRAM_nCS,
-   output        SDRAM_nCAS,
-   output        SDRAM_nRAS,
-   output        SDRAM_nWE
+	output        SDRAM_CLK,
+	output        SDRAM_CKE,
+	output [12:0] SDRAM_A,
+	output  [1:0] SDRAM_BA,
+	inout  [15:0] SDRAM_DQ,
+	output        SDRAM_DQML,
+	output        SDRAM_DQMH,
+	output        SDRAM_nCS,
+	output        SDRAM_nCAS,
+	output        SDRAM_nRAS,
+	output        SDRAM_nWE
 );
 
 assign LED_USER  = dsk_copy;
@@ -98,6 +104,7 @@ assign LED_POWER = 0;
 assign CLK_VIDEO = clk_sys;
 
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
+assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 /////////////////////////////   CLOCKS   //////////////////////////////
 wire plock;
@@ -235,6 +242,11 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>
 (
 	.*,
 	.conf_str({CONF_STR1, freq_n, CONF_STR2, freq_t, CONF_STR3, status[5] ? CONF_A16M : CONF_SMK512, CONF_STR4}),
+
+	.ps2_kbd_clk_out(ps2_kbd_clk),
+	.ps2_kbd_data_out(ps2_kbd_data),
+	.ps2_mouse_clk_out(ps2_mouse_clk),
+	.ps2_mouse_data_out(ps2_mouse_data),
 	.ps2_kbd_led_use(3'b001),
 	.ps2_kbd_led_status({2'b00, ps2_caps_led}),
 
@@ -243,7 +255,15 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>
 	.sd_ack_conf(),
 	.ioctl_wait(0),
 	.joystick_analog_0(),
-	.joystick_analog_1()
+	.joystick_analog_1(),
+	.RTC(),
+	.TIMESTAMP(),
+	.ps2_kbd_clk_in(1),
+	.ps2_kbd_data_in(1),
+	.ps2_mouse_clk_in(1),
+	.ps2_mouse_data_in(1),
+	.ps2_key(),
+	.ps2_mouse()
 );
 
 

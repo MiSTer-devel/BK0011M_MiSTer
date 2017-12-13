@@ -105,10 +105,12 @@ end
 reg [31:0] disk_size[2] = '{0,0};
 reg  [1:0] disk_readonly = 0;
 
+wire [24:0] down_addr = ioctl_addr + ((ioctl_index) ? 25'h100000 : 25'h0E0000);
+
 assign dsk_copy        = ioctl_download | processing;
 assign dsk_copy_we     = ioctl_download ? ioctl_wr   : copy_we;
 assign dsk_copy_rd     = ioctl_download ? 1'b0       : copy_rd;
-assign dsk_copy_addr   = ioctl_download ? ioctl_addr : copy_addr;
+assign dsk_copy_addr   = ioctl_download ? down_addr  : copy_addr;
 assign dsk_copy_dout   = ioctl_download ? ioctl_dout : copy_dout;
 assign dsk_copy_virt   = ioctl_download ? 1'b0       : copy_virt;
 
@@ -119,8 +121,8 @@ always @(posedge clk_sys) begin
 	reg old_we;
 	old_we <= ioctl_wr;
 	if(~old_we & ioctl_wr) begin
-		if(ioctl_addr == 25'h100000) tape_addr <= {ioctl_dout[15:1], 1'b0};
-		if(ioctl_addr == 25'h100002) tape_len  <= (ioctl_dout+1'd1) & ~16'd1;
+		if(down_addr == 25'h100000) tape_addr <= {ioctl_dout[15:1], 1'b0};
+		if(down_addr == 25'h100002) tape_len  <= (ioctl_dout+1'd1) & ~16'd1;
 	end
 end
 
