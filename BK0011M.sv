@@ -156,11 +156,9 @@ end
 
 
 ///////////////////////////  MIST ARM I/O  ////////////////////////////
-wire        ps2_kbd_clk;
-wire        ps2_kbd_data;
-wire        ps2_mouse_clk;
-wire        ps2_mouse_data;
+wire [10:0] ps2_key;
 wire        ps2_caps_led;
+wire [24:0] ps2_mouse;
 
 wire [15:0] joystick_0;
 wire [15:0] joystick_1;
@@ -235,7 +233,7 @@ localparam CONF_STR4 =
 	",No,Yes;",
 	"-;",
 	"T2,Reset & Unload Disks;",
-	"V,v3.01.",`BUILD_DATE
+	"V,v3.20.",`BUILD_DATE
 };
 
 hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>3)+($size(CONF_STR4)>>3)+($size(CONF_SMK512)>>3)+2), .WIDE(1), .VDNUM(3)) hps_io
@@ -243,12 +241,10 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>
 	.*,
 	.conf_str({CONF_STR1, freq_n, CONF_STR2, freq_t, CONF_STR3, status[5] ? CONF_A16M : CONF_SMK512, CONF_STR4}),
 
-	.ps2_kbd_clk_out(ps2_kbd_clk),
-	.ps2_kbd_data_out(ps2_kbd_data),
-	.ps2_mouse_clk_out(ps2_mouse_clk),
-	.ps2_mouse_data_out(ps2_mouse_data),
+	.ps2_key(ps2_key),
 	.ps2_kbd_led_use(3'b001),
 	.ps2_kbd_led_status({2'b00, ps2_caps_led}),
+	.ps2_mouse(ps2_mouse),
 
 	// unused
 	.sd_conf(0),
@@ -260,10 +256,12 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>
 	.TIMESTAMP(),
 	.ps2_kbd_clk_in(1),
 	.ps2_kbd_data_in(1),
+	.ps2_kbd_clk_out(),
+	.ps2_kbd_data_out(),
 	.ps2_mouse_clk_in(1),
 	.ps2_mouse_data_in(1),
-	.ps2_key(),
-	.ps2_mouse()
+	.ps2_mouse_clk_out(),
+	.ps2_mouse_data_out()
 );
 
 
@@ -465,52 +463,37 @@ reg         joystick_or_mouse = 0;
 wire [15:0] port_data = port_sel ? (joystick_or_mouse ? mouse_state : joystick) : 16'd0;
 wire [15:0] joystick =  joystick_0 | joystick_1;
 
-always @(posedge clk_sys) begin
-	if(|joystick)        joystick_or_mouse <= 0;
-	if(mouse_data_ready) joystick_or_mouse <= 1;
-end
+wire  [8:0] pointer_dx = {ps2_mouse[4],ps2_mouse[15:8]};
+wire  [8:0] pointer_dy = {ps2_mouse[5],ps2_mouse[23:16]};
 
-wire        left_btn, right_btn;
-wire        mouse_data_ready;
-wire  [8:0] pointer_dx;
-wire  [8:0] pointer_dy;
-wire  [7:0] mouse_counter;
-reg   [7:0] old_mouse_counter;
-
-ps2_mouse mouse
-(
-	.*,
-	.clk(clk_sys),
-	.ps2_clk(ps2_mouse_clk),
-	.ps2_data(ps2_mouse_data),
-	.data_ready(mouse_data_ready),
-	.counter(mouse_counter)
-);
-
-reg  [6:0] mouse_state  = 0;
-wire       mouse_write  = bus_wtbt[0] & port_write;
+reg   [6:0] mouse_state = 0;
+wire        mouse_write = bus_wtbt[0] & port_write;
 always @(posedge clk_sys) begin
 	reg mouse_enable = 0;
 	reg old_write;
-	old_write <= mouse_write;
+	reg old_status;
 
+	if(|joystick) joystick_or_mouse <= 0;
+
+	old_write <= mouse_write;
 	if(~old_write & mouse_write) begin 
 		mouse_enable <= cpu_dout[3];
 		if(!cpu_dout[3]) mouse_state[3:0] <= 0;
-	end else begin
-		mouse_state[6] <= right_btn;
-		mouse_state[5] <= left_btn;
+	end
+
+	old_status <= ps2_mouse[24];
+	if(old_status != ps2_mouse[24]) begin
+		mouse_state[6] <= ps2_mouse[1];
+		mouse_state[5] <= ps2_mouse[0];
+		joystick_or_mouse <= 1;
 		if(mouse_enable) begin
-			if(old_mouse_counter != mouse_counter) begin
-				if(!mouse_state[0] && !mouse_state[2]) begin
-					if(!pointer_dy[8] && ( pointer_dy > 3)) mouse_state[0] <= 1;
-					if( pointer_dy[8] && (~pointer_dy > 2)) mouse_state[2] <= 1;
-				end
-				if(!mouse_state[1] && !mouse_state[3]) begin
-					if(!pointer_dx[8] && ( pointer_dx > 3)) mouse_state[1] <= 1;
-					if( pointer_dx[8] && (~pointer_dx > 2)) mouse_state[3] <= 1;
-				end
-				old_mouse_counter <= mouse_counter;
+			if(!mouse_state[0] && !mouse_state[2]) begin
+				if(!pointer_dy[8] && ( pointer_dy > 3)) mouse_state[0] <= 1;
+				if( pointer_dy[8] && (~pointer_dy > 2)) mouse_state[2] <= 1;
+			end
+			if(!mouse_state[1] && !mouse_state[3]) begin
+				if(!pointer_dx[8] && ( pointer_dx > 3)) mouse_state[1] <= 1;
+				if( pointer_dx[8] && (~pointer_dx > 2)) mouse_state[3] <= 1;
 			end
 		end
 	end
