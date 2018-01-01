@@ -62,6 +62,7 @@ module emu
 	output [15:0] AUDIO_L,
 	output [15:0] AUDIO_R,
 	output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
+	output  [1:0] AUDIO_MIX, // 0 - no mix, 1 - 25%, 2 - 50%, 3 - 100% (mono)
 	input         TAPE_IN,
 
 	// SD-SPI
@@ -200,7 +201,7 @@ localparam CONF_STR1 =
 	"O3,Monochrome,No,Yes;",
 	"O4,Aspect ratio,4:3,16:9;",
 	"O78,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
-	"-;",
+	"OAB,Stereo mix,none,25%,50%,100%;",
 	"O1,CPU Speed,"
 };
 
@@ -534,6 +535,7 @@ ym2149 psg
 assign AUDIO_S = 0;
 assign AUDIO_L = {psg_active ? {1'b0, channel_a, 1'b0} + {2'b00, channel_b} + {2'b00, spk_out, 5'b00000} : {spk_out, 7'b0000000}, 6'd0};
 assign AUDIO_R = {psg_active ? {1'b0, channel_c, 1'b0} + {2'b00, channel_b} + {2'b00, spk_out, 5'b00000} : {spk_out, 7'b0000000}, 6'd0};
+assign AUDIO_MIX = status[11:10];
 
 
 /////////////////////////////   VIDEO   ///////////////////////////////
