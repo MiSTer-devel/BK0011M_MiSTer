@@ -3,7 +3,7 @@
 //
 //
 // BK0011M for MiSTer
-// (C) 2017 Sorgelig
+// (C) 2017,2018 Sorgelig
 //
 // This source file and all other files in this project is free software: 
 // you can redistribute it and/or modify it under the terms of the 
@@ -47,8 +47,8 @@ module emu
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
 	output  [7:0] VGA_B,
-	output        VGA_HS,    // positive pulse!
-	output        VGA_VS,    // positive pulse!
+	output        VGA_HS,
+	output        VGA_VS,
 	output        VGA_DE,    // = ~(VBlank | HBlank)
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
@@ -70,6 +70,7 @@ module emu
 	output        SD_MOSI,
 	input         SD_MISO,
 	output        SD_CS,
+	input         SD_CD,
 
 	//High latency DDR3 RAM interface
 	//Use for non-critical time purposes
@@ -289,7 +290,7 @@ wire        bus_stb = cpu_dout_in | cpu_din_out;
 vm1_reset reset
 (
 	.clk(CLK_50M),
-	.reset(!sys_ready | reset_req | buttons[1] | status[2] | key_reset),
+	.reset(~sys_ready | reset_req | buttons[1] | status[2] | key_reset),
 	.dclo(cpu_dclo),
 	.aclo(cpu_aclo)
 );
@@ -297,7 +298,7 @@ vm1_reset reset
 // Wait for bk0011m.rom or initial reset
 reg sys_ready = 0;
 always @(posedge clk_sys) begin
-	reg old_rst;
+	reg old_rst = 0;
 	old_rst <= status[0];
 	if(old_rst & ~status[0]) sys_ready <= 1;
 end
