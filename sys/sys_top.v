@@ -30,7 +30,7 @@ module sys_top
 	output  [5:0] VGA_R,
 	output  [5:0] VGA_G,
 	output  [5:0] VGA_B,
-	inout		  VGA_HS,  // VGA_HS is secondary SD card detect when VGA_EN = 1 (inactive)
+	inout         VGA_HS,  // VGA_HS is secondary SD card detect when VGA_EN = 1 (inactive)
 	output		  VGA_VS,
 	input         VGA_EN,  // active low
 
@@ -190,6 +190,7 @@ cyclonev_hps_interface_mpu_general_purpose h2f_gp
 reg [15:0] cfg;
 
 reg        cfg_got   = 0;
+reg        cfg_set   = 0;
 //wire [2:0] hdmi_res  = cfg[10:8];
 wire       dvi_mode  = cfg[7];
 wire       audio_96k = cfg[6];
@@ -205,6 +206,7 @@ reg [31:0] cfg_custom_p2;
 
 reg  [4:0] vol_att = 0;
 
+reg        vip_newcfg = 0;
 always@(posedge clk_sys) begin
 	reg  [7:0] cmd;
 	reg        has_cmd;
@@ -224,22 +226,24 @@ always@(posedge clk_sys) begin
 		else begin
 			if(cmd == 1) begin
 				cfg <= io_din;
-				cfg_got <= 1;
+				cfg_set <= 1;
 			end
 			if(cmd == 'h20) begin
+				cfg_set <= 0;
 				cnt <= cnt + 1'd1;
 				if(cnt<8) begin
+					if(!cnt) vip_newcfg <= ~cfg_ready;
 					case(cnt)
-						0: WIDTH  <= io_din[11:0];
-						1: HFP    <= io_din[11:0];
-						2: HS     <= io_din[11:0];
-						3: HBP    <= io_din[11:0];
-						4: HEIGHT <= io_din[11:0];
-						5: VFP    <= io_din[11:0];
-						6: VS     <= io_din[11:0];
-						7: VBP    <= io_din[11:0];
+						0: if(WIDTH  != io_din[11:0]) begin WIDTH  <= io_din[11:0]; vip_newcfg <= 1; end
+						1: if(HFP    != io_din[11:0]) begin HFP    <= io_din[11:0]; vip_newcfg <= 1; end
+						2: if(HS     != io_din[11:0]) begin HS     <= io_din[11:0]; vip_newcfg <= 1; end
+						3: if(HBP    != io_din[11:0]) begin HBP    <= io_din[11:0]; vip_newcfg <= 1; end
+						4: if(HEIGHT != io_din[11:0]) begin HEIGHT <= io_din[11:0]; vip_newcfg <= 1; end
+						5: if(VFP    != io_din[11:0]) begin VFP    <= io_din[11:0]; vip_newcfg <= 1; end
+						6: if(VS     != io_din[11:0]) begin VS     <= io_din[11:0]; vip_newcfg <= 1; end
+						7: if(VBP    != io_din[11:0]) begin VBP    <= io_din[11:0]; vip_newcfg <= 1; end
 					endcase
-					if(!cnt) begin
+					if(cnt == 1) begin
 						cfg_custom_p1 <= 0;
 						cfg_custom_p2 <= 0;
 						cfg_custom_t <= ~cfg_custom_t;
@@ -257,7 +261,18 @@ always@(posedge clk_sys) begin
 			end
 			if(cmd == 'h25) {led_overtake, led_state} <= io_din;
 			if(cmd == 'h26) vol_att <= io_din[4:0];
+			if(cmd == 'h27) VSET    <= io_din[11:0];
 		end
+	end
+end
+
+always @(posedge clk_sys) begin
+	reg vsd, vsd2;
+	if(~cfg_ready || ~cfg_set) cfg_got <= cfg_set;
+	else begin
+		vsd  <= HDMI_TX_VS;
+		vsd2 <= vsd;
+		if(~vsd2 & vsd) cfg_got <= cfg_set;
 	end
 end
 
@@ -295,6 +310,7 @@ vip vip
 	//Reset/Clock
 	.reset_reset_req(reset_req | ~cfg_ready),
 	.reset_reset(reset),
+	.reset_reset_vip(0),
 
 	//DE10-nano has no reset signal on GPIO, so core has to emulate cold reset button.
 	.reset_cold_req(~btn_reset),
@@ -365,6 +381,7 @@ vip_config vip_config
 
 	.ARX(ARX),
 	.ARY(ARY),
+	.CFG_SET(vip_newcfg & cfg_got),
 
 	.WIDTH(WIDTH),
 	.HFP(HFP),
@@ -374,6 +391,7 @@ vip_config vip_config
 	.VFP(VFP),
 	.VBP(VBP),
 	.VS(VS),
+	.VSET(VSET),
 
 	.address(ctl_address),
 	.write(ctl_write),
@@ -564,15 +582,16 @@ pll_hdmi pll_hdmi
 	.outclk_0(HDMI_TX_CLK)
 );
 
-//1280x720@60 PCLK=74.25MHz CEA
-reg  [11:0] WIDTH  = 1280;
-reg  [11:0] HFP    = 110;
-reg  [11:0] HS     = 40;
-reg  [11:0] HBP    = 220;
-reg  [11:0] HEIGHT = 720;
-reg  [11:0] VFP    = 5;
+//1920x1080@60 PCLK=148.5MHz CEA
+reg  [11:0] WIDTH  = 1920;
+reg  [11:0] HFP    = 88;
+reg  [11:0] HS     = 48;
+reg  [11:0] HBP    = 148;
+reg  [11:0] HEIGHT = 1080;
+reg  [11:0] VFP    = 4;
 reg  [11:0] VS     = 5;
-reg  [11:0] VBP    = 20;
+reg  [11:0] VBP    = 36;
+reg  [11:0] VSET   = 0;
 
 wire [63:0] reconfig_to_pll;
 wire [63:0] reconfig_from_pll;
@@ -623,7 +642,6 @@ always @(posedge FPGA_CLK1_50) begin
 
 	old_wait <= cfg_waitrequest;
 	if(old_wait & ~cfg_waitrequest & gotd) cfg_ready <= 1;
-	if(~gotd) cfg_ready <= 0;
 end
 
 hdmi_config hdmi_config
@@ -647,7 +665,7 @@ osd hdmi_osd
 
 	.io_osd(io_osd),
 	.io_strobe(io_strobe),
-	.io_din(io_din[7:0]),
+	.io_din(io_din),
 
 	.clk_video(iHdmiClk),
 	.din(hdmi_data),
@@ -682,7 +700,7 @@ osd vga_osd
 
 	.io_osd(io_osd),
 	.io_strobe(io_strobe),
-	.io_din(io_din[7:0]),
+	.io_din(io_din),
 
 	.clk_video(clk_vid),
 	.din(de ? {r_out, g_out, b_out} : 24'd0),
@@ -833,7 +851,7 @@ emu emu
 (
 	.CLK_50M(FPGA_CLK3_50),
 	.RESET(reset),
-	.HPS_BUS({clk_ctl, clk_vid, ce_pix, de, hs, vs, io_wait, clk_sys, io_fpga, io_uio, io_strobe, io_wide, io_din, io_dout}),
+	.HPS_BUS({HDMI_TX_VS, clk_ctl, clk_vid, ce_pix, de, hs, vs, io_wait, clk_sys, io_fpga, io_uio, io_strobe, io_wide, io_din, io_dout}),
 
 	.CLK_VIDEO(clk_vid),
 	.CE_PIXEL(ce_pix),
