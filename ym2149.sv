@@ -1,24 +1,64 @@
-
+//
+// Copyright (c) MikeJ - Jan 2005
+// Copyright (c) 2016-2018 Sorgelig
+//
+// All rights reserved
+//
+// Redistribution and use in source and synthezised forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//
+// Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
+//
+// Redistributions in synthesized form must reproduce the above copyright
+// notice, this list of conditions and the following disclaimer in the
+// documentation and/or other materials provided with the distribution.
+//
+// Neither the name of the author nor the names of other contributors may
+// be used to endorse or promote products derived from this software without
+// specific prior written permission.
+//
+// THIS CODE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+// THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+// POSSIBILITY OF SUCH DAMAGE.
+//
 
 module ym2149
 (
-   input        CLK,		   // Global clock
-   input        CE,        // PSG Clock enable
-   input        RESET,	   // Chip RESET (set all Registers to '0', active hi)
-   input        BDIR,	   // Bus Direction (0 - read , 1 - write)
-   input        BC,		   // Bus control
-   input  [7:0] DI,	      // Data In
-   output [7:0] DO,	      // Data Out
-   output [7:0] CHANNEL_A, // PSG Output channel A
-   output [7:0] CHANNEL_B, // PSG Output channel B
-   output [7:0] CHANNEL_C, // PSG Output channel C
+	input        CLK,       // Global clock
+	input        CE,        // PSG Clock enable
+	input        RESET,     // Chip RESET (set all Registers to '0', active hi)
+	input        BDIR,      // Bus Direction (0 - read , 1 - write)
+	input        BC,        // Bus control
+	input  [7:0] DI,        // Data In
+	output [7:0] DO,        // Data Out
+	output [7:0] CHANNEL_A, // PSG Output channel A
+	output [7:0] CHANNEL_B, // PSG Output channel B
+	output [7:0] CHANNEL_C, // PSG Output channel C
 
-   output [5:0] ACTIVE,
-   input        SEL,
-   input        MODE
+	input        SEL,
+	input        MODE,
+	output [5:0] ACTIVE,
+
+	input  [7:0] IOA_in,
+	output [7:0] IOA_out,
+
+	input  [7:0] IOB_in,
+	output [7:0] IOB_out
 );
 
 assign ACTIVE = ~ymreg[7][5:0];
+
+assign     IOA_out = ymreg[14];
+assign     IOB_out = ymreg[15];
 
 reg        ena_div;
 reg        ena_div_noise;
@@ -64,8 +104,8 @@ always_comb begin
 		11: dout = ymreg[11];
 		12: dout = ymreg[12];
 		13: dout = {4'b0000, ymreg[13][3:0]};
-		14: dout = (ymreg[7][6] ? ymreg[14] : 8'd0);
-		15: dout = (ymreg[7][7] ? ymreg[15] : 8'd0);
+		14: dout = (ymreg[7][6] ? ymreg[14] : IOA_in);
+		15: dout = (ymreg[7][7] ? ymreg[15] : IOB_in);
 	endcase
 end
 
@@ -90,20 +130,26 @@ always @(posedge CLK) begin
 end
 
 
-reg [16:0] poly17;
-wire [4:0] noise_gen_comp = ymreg[6][4:0] ? ymreg[6][4:0] - 1'd1 : 5'd0;
+reg noise_gen_op;
 
 //  p_noise_gen
 always @(posedge CLK) begin
+	reg [16:0] poly17;
 	reg [4:0]  noise_gen_cnt;
 
 	if(CE) begin
 		if (ena_div_noise) begin
-			if (noise_gen_cnt >= noise_gen_comp) begin
-				noise_gen_cnt <= 0;
-				poly17 <= {(poly17[0] ^ poly17[2] ^ !poly17), poly17[16:1]};
+			if(ymreg[6][4:0]) begin
+				if (noise_gen_cnt >= ymreg[6][4:0] - 1'd1) begin
+					noise_gen_cnt <= 0;
+					poly17 <= {(poly17[0] ^ poly17[2] ^ !poly17), poly17[16:1]};
+				end else begin
+					noise_gen_cnt <= noise_gen_cnt + 1'd1;
+				end
+				noise_gen_op <= poly17[0];
 			end else begin
-				noise_gen_cnt <= noise_gen_cnt + 1'd1;
+				noise_gen_op <= 0;
+				noise_gen_cnt <= 0;
 			end
 		end
 	end
@@ -113,11 +159,6 @@ wire [11:0] tone_gen_freq[1:3];
 assign tone_gen_freq[1] = {ymreg[1][3:0], ymreg[0]};
 assign tone_gen_freq[2] = {ymreg[3][3:0], ymreg[2]};
 assign tone_gen_freq[3] = {ymreg[5][3:0], ymreg[4]};
-
-wire [11:0] tone_gen_comp[1:3];
-assign tone_gen_comp[1] = tone_gen_freq[1] ? tone_gen_freq[1] - 1'd1 : 12'd0;
-assign tone_gen_comp[2] = tone_gen_freq[2] ? tone_gen_freq[2] - 1'd1 : 12'd0;
-assign tone_gen_comp[3] = tone_gen_freq[3] ? tone_gen_freq[3] - 1'd1 : 12'd0;
 
 reg [3:1] tone_gen_op;
 
@@ -131,11 +172,16 @@ always @(posedge CLK) begin
 	
 		for (i = 1; i <= 3; i = i + 1) begin
 			if(ena_div) begin
-				if (tone_gen_cnt[i] >= tone_gen_comp[i]) begin
-					tone_gen_cnt[i] <= 0;
-					tone_gen_op[i]  <= (~tone_gen_op[i]);
+				if (tone_gen_freq[i]) begin
+					if (tone_gen_cnt[i] >= (tone_gen_freq[i] - 1'd1)) begin
+						tone_gen_cnt[i] <= 0;
+						tone_gen_op[i]  <= ~tone_gen_op[i];
+					end else begin
+						tone_gen_cnt[i] <= tone_gen_cnt[i] + 1'd1;
+					end
 				end else begin
-					tone_gen_cnt[i] <= tone_gen_cnt[i] + 1'd1;
+					tone_gen_op[i] <= 0;
+					tone_gen_cnt[i] <= 0;
 				end
 			end
 		end
@@ -277,9 +323,9 @@ always @(posedge CLK) begin
 	end
 end
 
-wire [4:0] A = ~((ymreg[7][0] | tone_gen_op[1]) & (ymreg[7][3] | poly17[0])) ? 5'd0 : ymreg[8][4]  ? env_vol[4:0] : { ymreg[8][3:0],  ymreg[8][3]};
-wire [4:0] B = ~((ymreg[7][1] | tone_gen_op[2]) & (ymreg[7][4] | poly17[0])) ? 5'd0 : ymreg[9][4]  ? env_vol[4:0] : { ymreg[9][3:0],  ymreg[9][3]};
-wire [4:0] C = ~((ymreg[7][2] | tone_gen_op[3]) & (ymreg[7][5] | poly17[0])) ? 5'd0 : ymreg[10][4] ? env_vol[4:0] : {ymreg[10][3:0], ymreg[10][3]};
+wire [4:0] A = ~((ymreg[7][0] | tone_gen_op[1]) & (ymreg[7][3] | noise_gen_op)) ? 5'd0 : ymreg[8][4]  ? env_vol[4:0] : { ymreg[8][3:0],  ymreg[8][3]};
+wire [4:0] B = ~((ymreg[7][1] | tone_gen_op[2]) & (ymreg[7][4] | noise_gen_op)) ? 5'd0 : ymreg[9][4]  ? env_vol[4:0] : { ymreg[9][3:0],  ymreg[9][3]};
+wire [4:0] C = ~((ymreg[7][2] | tone_gen_op[3]) & (ymreg[7][5] | noise_gen_op)) ? 5'd0 : ymreg[10][4] ? env_vol[4:0] : {ymreg[10][3:0], ymreg[10][3]};
 
 assign CHANNEL_A = MODE ? volTableAy[A[4:1]] : volTableYm[A];
 assign CHANNEL_B = MODE ? volTableAy[B[4:1]] : volTableYm[B];
