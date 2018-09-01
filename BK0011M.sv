@@ -249,6 +249,7 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>
 	.ps2_mouse(ps2_mouse),
 
 	// unused
+	.ioctl_file_ext(),
 	.new_vmode(0),
 	.sd_conf(0),
 	.sd_ack_conf(),
