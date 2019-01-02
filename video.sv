@@ -131,7 +131,7 @@ video_mixer #(.LINE_LENGTH(520), .HALF_DEPTH(1)) video_mixer
 	.ce_pix(ce_12mp & (mode512 | dotm)),
 	.ce_pix_out(ce_pix),
 
-	.scanlines({scale == 3, scale == 2}),
+	.scanlines(0),
 	.scandoubler(scale || forced_scandoubler),
 
 	.mono(0),

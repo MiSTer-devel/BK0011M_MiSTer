@@ -50,6 +50,8 @@ module emu
 	output        VGA_HS,
 	output        VGA_VS,
 	output        VGA_DE,    // = ~(VBlank | HBlank)
+	output        VGA_F1,
+	output  [1:0] VGA_SL,
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
 
@@ -96,8 +98,19 @@ module emu
 	output        SDRAM_nCS,
 	output        SDRAM_nCAS,
 	output        SDRAM_nRAS,
-	output        SDRAM_nWE
+	output        SDRAM_nWE,
+
+	input         UART_CTS,
+	output        UART_RTS,
+	input         UART_RXD,
+	output        UART_TXD,
+	output        UART_DTR,
+	input         UART_DSR
 );
+
+assign VGA_F1 = 0;
+assign {UART_RTS, UART_TXD, UART_DTR} = 0;
+assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign LED_USER  = dsk_copy;
 assign LED_DISK  = 0;
@@ -234,38 +247,48 @@ localparam CONF_STR4 =
 {
 	",No,Yes;",
 	"-;",
-	"T2,Reset & Unload Disks;",
-	"V,v3.20.",`BUILD_DATE
+	"R2,Reset & Unload Disks;",
+	"V,v",`BUILD_DATE
 };
 
 hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>3)+($size(CONF_STR4)>>3)+($size(CONF_SMK512)>>3)+2), .WIDE(1), .VDNUM(3)) hps_io
 (
-	.*,
+	.clk_sys(clk_sys),
+	.HPS_BUS(HPS_BUS),
+
 	.conf_str({CONF_STR1, freq_n, CONF_STR2, freq_t, CONF_STR3, status[5] ? CONF_A16M : CONF_SMK512, CONF_STR4}),
 
 	.ps2_key(ps2_key),
 	.ps2_kbd_led_use(3'b001),
 	.ps2_kbd_led_status({2'b00, ps2_caps_led}),
+
 	.ps2_mouse(ps2_mouse),
 
-	// unused
-	.ioctl_file_ext(),
-	.new_vmode(0),
-	.sd_conf(0),
-	.sd_ack_conf(),
-	.ioctl_wait(0),
-	.joystick_analog_0(),
-	.joystick_analog_1(),
-	.RTC(),
-	.TIMESTAMP(),
-	.ps2_kbd_clk_in(1),
-	.ps2_kbd_data_in(1),
-	.ps2_kbd_clk_out(),
-	.ps2_kbd_data_out(),
-	.ps2_mouse_clk_in(1),
-	.ps2_mouse_data_in(1),
-	.ps2_mouse_clk_out(),
-	.ps2_mouse_data_out()
+	.joystick_0(joystick_0),
+	.joystick_1(joystick_1),
+
+	.buttons(buttons),
+	.forced_scandoubler(forced_scandoubler),
+	.status(status),
+
+	.sd_lba(sd_lba),
+	.sd_rd(sd_rd),
+	.sd_wr(sd_wr),
+	.sd_ack(sd_ack),
+	.sd_buff_addr(sd_buff_addr),
+	.sd_buff_dout(sd_buff_dout),
+	.sd_buff_din(sd_buff_din),
+	.sd_buff_wr(sd_buff_wr),
+
+	.img_mounted(img_mounted),
+	.img_readonly(img_readonly),
+	.img_size(img_size),
+
+	.ioctl_download(ioctl_download),
+	.ioctl_wr(ioctl_wr),
+	.ioctl_addr(ioctl_addr),
+	.ioctl_dout(ioctl_dout),
+	.ioctl_index(ioctl_index)
 );
 
 
@@ -548,6 +571,9 @@ wire        irq2;
 wire [13:0] vram_addr;
 wire [15:0] vram_data;
 
+wire  [1:0] scale = status[8:7];
+assign VGA_SL = {scale == 3, scale == 2};
+
 video video
 (
 	.*,
@@ -555,7 +581,6 @@ video video
 	.ce_pix(CE_PIXEL),
 	.color_switch(key_color),
 	.monochome(status[3]),
-	.scale(status[8:7]),
 
 	.bus_dout(scrreg_data),
 	.bus_ack(scrreg_ack)
