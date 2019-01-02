@@ -84,7 +84,7 @@ always @(posedge clk_sys) begin
 			HSync <= 1;
 			if(vc == 276) begin
 				VSync <= 1;
-				mode512 <= ~(color & hq2x);
+				mode512 <= ~color;
 			end
 			if(vc == 280) VSync <= 0;
 		end
