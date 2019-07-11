@@ -221,7 +221,7 @@ always @(posedge clk) begin
 		// ACTIVE-to-READ or WRITE delay >20ns (-75)
 		STATE_OPEN_1: state <= STATE_OPEN_2;
 		STATE_OPEN_2: begin
-			SDRAM_A     <= {4'b0010, save_addr[22:14]}; 
+			SDRAM_A     <= {save_we & (new_wtbt ? ~new_wtbt[1] : ~save_addr[0]), save_we & (new_wtbt ? ~new_wtbt[0] :  save_addr[0]), 2'b10, save_addr[22:14]};
 			SDRAM_DQML  <= save_we & (new_wtbt ? ~new_wtbt[0] :  save_addr[0]);
 			SDRAM_DQMH  <= save_we & (new_wtbt ? ~new_wtbt[1] : ~save_addr[0]);
 			state       <= save_we ? STATE_WRITE : STATE_READ;
