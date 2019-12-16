@@ -30,6 +30,7 @@ module memory
 	output        SDRAM_nWE,
 	output        SDRAM_nRAS,
 	output        SDRAM_nCAS,
+	output        SDRAM_CLK,
 	output        SDRAM_CKE,
 
 	input         init,
