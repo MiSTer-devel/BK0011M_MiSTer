@@ -219,6 +219,8 @@ wire [24:0] ioctl_addr;
 wire [15:0] ioctl_dout;
 wire  [7:0] ioctl_index;
 
+wire [21:0] gamma_bus;
+
 wire  [7:0] freq_n = status[5] ? "3" : "4";
 wire  [7:0] freq_t = status[5] ? "6" : "8";
 
@@ -289,6 +291,8 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
 	.status(status),
+
+	.gamma_bus(gamma_bus),
 
 	.sd_lba(sd_lba),
 	.sd_rd(sd_rd),

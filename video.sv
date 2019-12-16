@@ -24,6 +24,7 @@ module video
 	input         monochome,
 	input   [1:0] scale,
 	input         forced_scandoubler,
+	inout  [21:0] gamma_bus,
 
 	// Video signals
 	output  [7:0] VGA_R,
@@ -125,9 +126,10 @@ assign {R[1], B, G, R[0]} = color ? pal[{dotc[0],dotc[1], 2'b00} +:4] : {4{dotc[
 
 wire hq2x = (scale == 1);
 
-video_mixer #(.LINE_LENGTH(520), .HALF_DEPTH(1)) video_mixer
+video_mixer #(.LINE_LENGTH(520), .HALF_DEPTH(1), .GAMMA(1)) video_mixer
 (
 	.*,
+	.clk_vid(clk_sys),
 	.ce_pix(ce_12mp & (mode512 | dotm)),
 	.ce_pix_out(ce_pix),
 
