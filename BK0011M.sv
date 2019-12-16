@@ -135,20 +135,20 @@ assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS   = 0;
 
-assign CLK_VIDEO = clk_sys;
-
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 /////////////////////////////   CLOCKS   //////////////////////////////
 wire plock;
 wire clk_sys;
+wire clk_vid;
 
 pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_sys),
+	.outclk_1(clk_vid),
 	.locked(plock)
 );
 
@@ -161,8 +161,9 @@ reg  ce_12mn;
 reg  ce_6mp;
 reg  ce_6mn;
 reg  turbo;
+reg  ce_bus_2;
 
-always @(negedge clk_sys) begin
+always @(posedge clk_sys) begin
 	reg  [3:0] div = 0;
 	reg  [4:0] cpu_div = 0;
 	reg  [5:0] psg_div = 0;
@@ -174,6 +175,7 @@ always @(negedge clk_sys) begin
 	end
 	ce_cpu_p <= (cpu_div == 0);
 	ce_cpu_n <= (cpu_div == (5'd12 + {bk0010, 2'b00})>>turbo);
+	ce_bus_2 <= ce_cpu_p;
 
 	div <= div + 1'd1;
 	ce_12mp <= !div[2] & !div[1:0];
@@ -220,63 +222,38 @@ wire  [7:0] ioctl_index;
 
 wire [21:0] gamma_bus;
 
-wire  [7:0] freq_n = status[5] ? "3" : "4";
-wire  [7:0] freq_t = status[5] ? "6" : "8";
-
 `include "build_id.v"
-localparam CONF_STR1 = 
+localparam CONF_STR = 
 {
 	"BK0011M;;",
 	"F,BIN;",
-	"S1,DSK,Mount FDD(A);",
-	"S2,DSK,Mount FDD(B);",
-	"S0,VHD,Mount HDD;",
+	"D2S1,DSK,Mount FDD(A);",
+	"D2S2,DSK,Mount FDD(B);",
+	"D2S0,VHD,Mount HDD;",
 	"-;",
 	"O3,Monochrome,No,Yes;",
 	"O4,Aspect ratio,4:3,16:9;",
 	"O78,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%;",
 	"OAB,Stereo mix,none,25%,50%,100%;",
-	"O1,CPU Speed,"
-};
-
-
-localparam CONF_STR2 = 
-{
-	"MHz,"
-};
-
-localparam CONF_STR3 = 
-{
-	"MHz;",
+	"-;",
 	"O5,Model,BK0011M,BK0010;",
+	"H0O1,CPU Speed,4MHz,8MHz;",
+	"H1O1,CPU Speed,3MHz,6MHz;",
+	"-;",
 	"O6,FDD/HDD,Enable,Disable;",
-	"O9,"
-};
-
-localparam CONF_A16M = 
-{
-	"A16M  "
-};
-
-localparam CONF_SMK512 = 
-{
-	"SMK512"
-};
-
-localparam CONF_STR4 = 
-{
-	",No,Yes;",
+	"H0O9,SMK512,No,Yes;",
+	"H1O9,A16M,No,Yes;",
 	"-;",
 	"R2,Reset & Unload Disks;",
 	"V,v",`BUILD_DATE
 };
 
-hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>3)+($size(CONF_STR4)>>3)+($size(CONF_SMK512)>>3)+2), .WIDE(1), .VDNUM(3)) hps_io
+hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1), .VDNUM(3)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
 
-	.conf_str({CONF_STR1, freq_n, CONF_STR2, freq_t, CONF_STR3, status[5] ? CONF_A16M : CONF_SMK512, CONF_STR4}),
+	.conf_str(CONF_STR),
 
 	.ps2_key(ps2_key),
 	.ps2_kbd_led_use(3'b001),
@@ -289,7 +266,9 @@ hps_io #(.STRLEN(($size(CONF_STR1)>>3)+($size(CONF_STR2)>>3)+($size(CONF_STR3)>>
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
+
 	.status(status),
+	.status_menumask({status[6], ~status[5], status[5]}), 
 
 	.gamma_bus(gamma_bus),
 
@@ -388,13 +367,15 @@ wire        sysreg_sel   = cpu_psel[1];
 wire        port_sel     = cpu_psel[2];
 wire [15:0]	cpureg_data  = (bus_sync & !cpu_psel & (bus_addr[15:4] == (16'o177700 >> 4))) ? cpu_dout : 16'd0;
 wire [15:0]	sysreg_data  = sysreg_sel ? {start_addr, 1'b1, ~key_down, 3'b000, super_flg, 2'b00} : 16'd0;
-wire [15:0] cpu_din      = cpureg_data | keyboard_data | scrreg_data | ram_data | sysreg_data | port_data | ivec_data;
 wire        sysreg_write = bus_stb & sysreg_sel & bus_we;
 wire        port_write   = bus_stb & port_sel   & bus_we;
 
 reg   [2:0] dout_delay;
-always @(negedge clk_sys) if(ce_bus) dout_delay <= {dout_delay[1:0], cpu_dout_out};
-always @(negedge clk_sys) if(ce_bus) cpu_ack <= keyboard_ack | scrreg_ack | ram_ack | disk_ack | ivec_ack;
+always @(posedge clk_sys) if(ce_bus_2) dout_delay <= {dout_delay[1:0], cpu_dout_out};
+always @(posedge clk_sys) if(ce_bus_2) cpu_ack <= keyboard_ack | scrreg_ack | ram_ack | disk_ack | ivec_ack;
+
+reg  [15:0] cpu_din;
+always @(posedge clk_sys) cpu_din <= cpureg_data | keyboard_data | scrreg_data | ram_data | sysreg_data | port_data | ivec_data;
 
 reg  super_flg  = 1'b0;
 wire sysreg_acc = bus_stb & sysreg_sel;
@@ -609,6 +590,7 @@ video video
 	.bus_ack(scrreg_ack)
 );
 
+assign CLK_VIDEO = clk_vid;
 assign VIDEO_ARX = status[4] ? 8'd16 : 8'd4;
 assign VIDEO_ARY = status[4] ? 8'd9  : 8'd3;
 

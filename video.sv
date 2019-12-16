@@ -34,6 +34,7 @@ module video
 	output        VGA_HS,
 	output        VGA_DE,
 
+	input         clk_vid,
 	output [13:0] vram_addr,
 	input  [15:0] vram_data,
 
@@ -65,11 +66,24 @@ reg  VSync;
 reg  VBlank;
 wire HBlank = ~hbr[0];
 
-reg  mode512;
+reg ce_12mp2, ce_12mn2;
 always @(posedge clk_sys) begin
+	reg [1:0] ce_12mpd, ce_12mnd;
+	ce_12mpd <= {ce_12mpd[0], ce_12mp};
+	ce_12mnd <= {ce_12mnd[0], ce_12mn};
+	
+	ce_12mp2 <= |ce_12mpd;
+	ce_12mn2 <= |ce_12mnd;
+end
+
+reg ce_12mph, ce_12mnh;
+always @(posedge clk_vid) {ce_12mph, ce_12mnh} <= {ce_12mp2, ce_12mn2};
+
+reg  mode512;
+always @(posedge clk_vid) begin
 	reg  col_mod;
 
-	if(ce_12mp) begin
+	if(ce_12mph) begin
 		hc <= hc + 1'd1;
 		if(hc == 767) begin 
 			hc <=0;
@@ -97,7 +111,7 @@ always @(posedge clk_sys) begin
 		end
 	end
 
-	if(ce_12mn) begin
+	if(ce_12mnh) begin
 		VBlank <= vc[8];
 		dotm <= hc[0];
 		if(!hc[0]) begin
@@ -129,8 +143,7 @@ wire hq2x = (scale == 1);
 video_mixer #(.LINE_LENGTH(520), .HALF_DEPTH(1), .GAMMA(1)) video_mixer
 (
 	.*,
-	.clk_vid(clk_sys),
-	.ce_pix(ce_12mp & (mode512 | dotm)),
+	.ce_pix(ce_12mph & (mode512 | dotm)),
 	.ce_pix_out(ce_pix),
 
 	.scanlines(0),

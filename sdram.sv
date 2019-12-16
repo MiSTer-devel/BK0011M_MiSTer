@@ -170,12 +170,11 @@ always @(posedge clk) begin
 			else if(new_rd | new_we) begin
 				new_we   <= 0;
 				new_rd   <= 0;
-				save_addr<= addr;
 				save_we  <= new_we;
 				state    <= STATE_OPEN_1;
 				command  <= CMD_ACTIVE;
-				SDRAM_A  <= addr[13:1];
-				SDRAM_BA <= addr[24:23];
+				SDRAM_A  <= save_addr[13:1];
+				SDRAM_BA <= save_addr[24:23];
 			end
 		end
 
@@ -203,12 +202,15 @@ always @(posedge clk) begin
 	end
 
 	old_we <= we;
-	if(we & ~old_we) {ready, new_we, new_data, new_wtbt} <= {1'b0, 1'b1, din, wtbt};
+	if(we & ~old_we) begin
+		save_addr <= addr;
+		{ready, new_we, new_data, new_wtbt} <= {1'b0, 1'b1, din, wtbt};
+	end
 
 	old_rd <= rd;
 	if(rd & ~old_rd) begin
-		if(ready & ~save_we & (save_addr[24:1] == addr[24:1])) save_addr <= addr;
-			else {ready, new_rd} <= {1'b0, 1'b1};
+		save_addr <= addr;
+		if(!(ready & ~save_we & (save_addr[24:1] == addr[24:1]))) {ready, new_rd} <= {1'b0, 1'b1};
 	end
 end
 

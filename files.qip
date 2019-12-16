@@ -6,4 +6,5 @@ set_global_assignment -name VERILOG_FILE translate.v
 set_global_assignment -name SYSTEMVERILOG_FILE memory.sv
 set_global_assignment -name SYSTEMVERILOG_FILE keyboard.sv
 set_global_assignment -name SYSTEMVERILOG_FILE disk.sv
+set_global_assignment -name SDC_FILE BK0011M.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE BK0011M.sv

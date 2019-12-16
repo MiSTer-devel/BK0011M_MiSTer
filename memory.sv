@@ -59,6 +59,7 @@ module memory
 	input         bus_stb,
 	output        bus_ack,
 
+	input         clk_vid,
 	input  [13:0] vram_addr,
 	output [15:0] vram_data,
 
@@ -66,25 +67,24 @@ module memory
 	input         mem_copy_virt,
 	input  [24:0] mem_copy_addr,
 	input  [15:0] mem_copy_din,
-	output [15:0] mem_copy_dout,
+	output reg [15:0] mem_copy_dout,
 	input         mem_copy_we,
 	input         mem_copy_rd
 );
 
 vram vram
 (
-	.clock(clk_sys),
-
+	.wrclock(clk_sys),
 	.wraddr({scr1_we, ram_addr[13:1]}),
 	.be(ram_wtbt),
 	.we(ram_we & (scr0_we | scr1_we)),
 	.data(ram_din),
 
+	.rdclock(clk_vid),
 	.rdaddr(vram_addr),
 	.q(vram_data)
 );
 
-wire        ram_ready;
 wire [15:0] dram_dout;
 sdram ram
 (
@@ -96,7 +96,7 @@ sdram ram
 	.wtbt(ram_wtbt),
 	.we(ram_we && ram_wtbt),
 	.rd(ram_rd),
-	.ready(ram_ready)
+	.ready()
 );
 
 //
@@ -156,7 +156,7 @@ always @(posedge clk_sys) begin
 end
 
 wire [15:0] ram_dout = bios_rd ? bios_dout : dram_dout;
-assign mem_copy_dout = ram_dout;
+always @(posedge clk_sys) mem_copy_dout <= ram_dout;
 
 
 //SMK512 extension (used in BK0011M)
@@ -528,13 +528,13 @@ endmodule
 
 module vram
 (
-	input             clock,
-
+	input             wrclock,
 	input      [13:0] wraddr,
 	input             we,
 	input       [1:0] be,
 	input      [15:0] data,
 
+	input             rdclock,
 	input      [13:0] rdaddr,
 	output reg [15:0] q
 );
@@ -542,7 +542,7 @@ module vram
 logic [1:0][7:0] ram[0:(1<<14)-1];
 
 // port A
-always@(posedge clock)
+always@(posedge wrclock)
 begin
 	if(we) begin
 		if(be[0]) ram[wraddr][0] <= data[7:0];
@@ -551,7 +551,7 @@ begin
 end
 
 // port B
-always@(posedge clock) q <= ram[rdaddr];
+always@(posedge rdclock) q <= ram[rdaddr];
 
 endmodule
 
