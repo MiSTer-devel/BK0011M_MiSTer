@@ -245,6 +245,8 @@ localparam CONF_STR =
 	"H1O9,A16M,No,Yes;",
 	"-;",
 	"R2,Reset & Unload Disks;",
+	"J,A,B,C,D;",
+	"jn,A,B,X,Y;",
 	"V,v",`BUILD_DATE
 };
 

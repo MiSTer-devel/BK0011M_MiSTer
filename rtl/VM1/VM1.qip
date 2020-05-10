@@ -1,0 +1,5 @@
+set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) vm1_plm.v ]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) vm1_qbus_se.sv ]
+set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) vm1_se.v ]
+set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) vm1_tve.v ]
+set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) vm1_vic.v ]
