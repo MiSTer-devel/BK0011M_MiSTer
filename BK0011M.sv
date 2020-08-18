@@ -549,7 +549,7 @@ wire [7:0] channel_b;
 wire [7:0] channel_c;
 wire [5:0] psg_active;
 
-ym2149 psg
+YM2149 psg
 (
 	.CLK(clk_sys),
 	.CE(ce_psg),
