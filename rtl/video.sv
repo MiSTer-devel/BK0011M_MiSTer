@@ -16,7 +16,6 @@ module video
 	input         clk_sys,
 	input         ce_12mp,
 	input         ce_12mn,
-	output        ce_pix,
 
 	// Misc. signals
 	input         bk0010,
@@ -27,6 +26,8 @@ module video
 	inout  [21:0] gamma_bus,
 
 	// Video signals
+	input         CLK_VIDEO,
+	output        CE_PIXEL,
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
 	output  [7:0] VGA_B,
@@ -34,7 +35,6 @@ module video
 	output        VGA_HS,
 	output        VGA_DE,
 
-	input         clk_vid,
 	output [13:0] vram_addr,
 	input  [15:0] vram_data,
 
@@ -77,10 +77,10 @@ always @(posedge clk_sys) begin
 end
 
 reg ce_12mph, ce_12mnh;
-always @(posedge clk_vid) {ce_12mph, ce_12mnh} <= {ce_12mp2, ce_12mn2};
+always @(posedge CLK_VIDEO) {ce_12mph, ce_12mnh} <= {ce_12mp2, ce_12mn2};
 
 reg  mode512;
-always @(posedge clk_vid) begin
+always @(posedge CLK_VIDEO) begin
 	reg  col_mod;
 
 	if(ce_12mph) begin
@@ -144,12 +144,7 @@ video_mixer #(.LINE_LENGTH(520), .HALF_DEPTH(1), .GAMMA(1)) video_mixer
 (
 	.*,
 	.ce_pix(ce_12mph & (mode512 | dotm)),
-	.ce_pix_out(ce_pix),
-
-	.scanlines(0),
 	.scandoubler(scale || forced_scandoubler),
-
-	.mono(0),
 
 	.R({R, R}),
 	.G({4{G}}),
