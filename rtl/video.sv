@@ -146,6 +146,9 @@ video_mixer #(.LINE_LENGTH(520), .HALF_DEPTH(1), .GAMMA(1)) video_mixer
 	.ce_pix(ce_12mph & (mode512 | dotm)),
 	.scandoubler(scale || forced_scandoubler),
 
+	.HDMI_FREEZE(0),
+	.freeze_sync(),
+
 	.R({R, R}),
 	.G({4{G}}),
 	.B({4{B}})

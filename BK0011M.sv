@@ -31,7 +31,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [45:0] HPS_BUS,
+	inout  [48:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -57,8 +57,9 @@ module emu
 
 	input  [11:0] HDMI_WIDTH,
 	input  [11:0] HDMI_HEIGHT,
+	output        HDMI_FREEZE,
 
-`ifdef USE_FB
+`ifdef MISTER_FB
 	// Use framebuffer in DDRAM (USE_FB=1 in qsf)
 	// FB_FORMAT:
 	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
@@ -76,6 +77,7 @@ module emu
 	input         FB_LL,
 	output        FB_FORCE_BLANK,
 
+`ifdef MISTER_FB_PALETTE
 	// Palette control for 8bit modes.
 	// Ignored for other video modes.
 	output        FB_PAL_CLK,
@@ -83,6 +85,7 @@ module emu
 	output [23:0] FB_PAL_DOUT,
 	input  [23:0] FB_PAL_DIN,
 	output        FB_PAL_WR,
+`endif
 `endif
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
@@ -114,7 +117,6 @@ module emu
 	output        SD_CS,
 	input         SD_CD,
 
-`ifdef USE_DDRAM
 	//High latency DDR3 RAM interface
 	//Use for non-critical time purposes
 	output        DDRAM_CLK,
@@ -127,9 +129,7 @@ module emu
 	output [63:0] DDRAM_DIN,
 	output  [7:0] DDRAM_BE,
 	output        DDRAM_WE,
-`endif
 
-`ifdef USE_SDRAM
 	//SDRAM interface with lower latency
 	output        SDRAM_CLK,
 	output        SDRAM_CKE,
@@ -142,10 +142,10 @@ module emu
 	output        SDRAM_nCAS,
 	output        SDRAM_nRAS,
 	output        SDRAM_nWE,
-`endif
 
-`ifdef DUAL_SDRAM
+`ifdef MISTER_DUAL_SDRAM
 	//Secondary SDRAM
+	//Set all output SDRAM_* signals to Z ASAP if SDRAM2_EN is 0
 	input         SDRAM2_EN,
 	output        SDRAM2_CLK,
 	output [12:0] SDRAM2_A,
@@ -188,6 +188,7 @@ assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS   = 0;
 assign VGA_SCALER= 0;
+assign HDMI_FREEZE = 0;
 
 wire [1:0] ar = status[14:13];
 video_freak video_freak
@@ -267,7 +268,7 @@ wire [31:0] status;
 wire [31:0] sd_lba;
 wire  [2:0] sd_rd;
 wire  [2:0] sd_wr;
-wire        sd_ack;
+wire  [2:0] sd_ack;
 wire  [7:0] sd_buff_addr;
 wire [15:0] sd_buff_dout;
 wire [15:0] sd_buff_din;
@@ -316,12 +317,10 @@ localparam CONF_STR =
 	"V,v",`BUILD_DATE
 };
 
-hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1), .VDNUM(3)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(3)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
-
-	.conf_str(CONF_STR),
 
 	.ps2_key(ps2_key),
 	.ps2_kbd_led_use(3'b001),
@@ -340,13 +339,13 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1), .VDNUM(3)) hps_io
 
 	.gamma_bus(gamma_bus),
 
-	.sd_lba(sd_lba),
+	.sd_lba('{sd_lba,sd_lba,sd_lba}),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din(sd_buff_din),
+	.sd_buff_din('{sd_buff_din,sd_buff_din,sd_buff_din}),
 	.sd_buff_wr(sd_buff_wr),
 
 	.img_mounted(img_mounted),
@@ -690,6 +689,6 @@ wire [15:0] dsk_copy_dout;
 wire        dsk_copy_we;
 wire        dsk_copy_rd;
 
-disk disk(.*, .img_size(img_size[40:9]), .reset(cpu_dclo), .reset_full(status[2]), .bus_ack(disk_ack));
+disk disk(.*, .img_size(img_size[40:9]), .reset(cpu_dclo), .reset_full(status[2]), .bus_ack(disk_ack), .sd_ack(|sd_ack));
 
 endmodule
