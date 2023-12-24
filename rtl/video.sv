@@ -171,7 +171,7 @@ assign bus_ack  = bus_stb & (sel664 | sel662);
 wire sel662  = bus_sync && (bus_addr[15:1] == (16'o177662 >> 1)) && bus_we && !bk0010;
 wire sel664  = bus_sync && (bus_addr[15:1] == (16'o177664 >> 1));
 
-wire [15:0] def_reg662 = bk0010 ? 16'o045400 : 16'o047400;
+wire [15:0] def_reg662 = bk0010 ? 16'o040000 : 16'o047400;
 
 always @(posedge clk_sys) begin
 	reg old_stb, old_cswitch;
