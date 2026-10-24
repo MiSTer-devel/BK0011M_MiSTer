@@ -6,6 +6,7 @@ This project of [popular USSR home computer](https://en.wikipedia.org/wiki/Elect
 - Fully functional BK0011M and BK0010 with close to real CPU and Video timings (need furter corrections)
 - Turbo mode (6MHz for BK0010, 8MHz for BK0011M)
 - Floppy controller KR1801VP1-128 with drives A-D (read, write, format), raw DSK/IMG/BKD images
+- SMK-512 IDE hard disk (BK0011M + SMK512 option): raw SMK disk dumps (.hds/.img, data stored inverted as on the real disk) or BKEmu .hdi images; `tools/mkbkhdd.py` builds one out of floppy images. Image slot 0: `boot0.vhd` in games/BK0011M/ is mounted at start.
 - BIN file support for BK0010 mode (only single file apps are supported)
 - A16M extension for BK0010 (support for short and long resets)
 - SMK512 extension for BK0011M
