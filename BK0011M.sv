@@ -35,7 +35,7 @@ assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DD
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign LED_USER  = dsk_copy;
-assign LED_DISK  = 0;
+assign LED_DISK  = {1'b0, fdd_motor};
 assign LED_POWER = 0;
 assign BUTTONS   = 0;
 assign VGA_SCALER= 0;
@@ -119,16 +119,21 @@ wire  [1:0] buttons;
 wire        forced_scandoubler;
 wire [31:0] status;
 
-wire [31:0] sd_lba;
-wire  [2:0] sd_rd;
-wire  [2:0] sd_wr;
-wire  [2:0] sd_ack;
+// image slots: 1-4 the floppy drives A-D, 0 reserved for a hard disk
+localparam DRIVES = 4;
+localparam FDD0   = 1;
+localparam SLOTS  = 5;
+
+wire [31:0] fdd_lba;
+wire [SLOTS-1:0] sd_rd;
+wire [SLOTS-1:0] sd_wr;
+wire [SLOTS-1:0] sd_ack;
 wire  [7:0] sd_buff_addr;
 wire [15:0] sd_buff_dout;
-wire [15:0] sd_buff_din;
+wire [15:0] fdd_buff_din;
 wire        sd_buff_wr;
 
-wire  [2:0] img_mounted;
+wire [SLOTS-1:0] img_mounted;
 wire        img_readonly;
 wire [63:0] img_size;
 
@@ -145,9 +150,10 @@ localparam CONF_STR =
 {
 	"BK0011M;;",
 	"F,BIN;",
-	"D2S1,DSK,Mount FDD(A);",
-	"D2S2,DSK,Mount FDD(B);",
-	"D2S0,VHD,Mount HDD;",
+	"D2S1,DSKIMGBKD,Mount FDD A;",
+	"D2S2,DSKIMGBKD,Mount FDD B;",
+	"D2S3,DSKIMGBKD,Mount FDD C;",
+	"D2S4,DSKIMGBKD,Mount FDD D;",
 	"-;",
 	"O3,Monochrome,No,Yes;",
 	"ODE,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -161,17 +167,18 @@ localparam CONF_STR =
 	"H0O1,CPU Speed,4MHz,8MHz;",
 	"H1O1,CPU Speed,3MHz,6MHz;",
 	"-;",
-	"O6,FDD/HDD,Enable,Disable;",
+	"O6,Disk controller,Enable,Disable;",
 	"H0O9,SMK512,No,Yes;",
 	"H1O9,A16M,No,Yes;",
+	"OH,FDD write protect,No,Yes;",
 	"-;",
-	"R2,Reset & Unload Disks;",
+	"R2,Reset;",
 	"J,A,B,C,D;",
 	"jn,A,B,X,Y;",
 	"V,v",`BUILD_DATE
 };
 
-hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(3)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(SLOTS)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -193,13 +200,13 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(3)) hps_io
 
 	.gamma_bus(gamma_bus),
 
-	.sd_lba('{sd_lba,sd_lba,sd_lba}),
+	.sd_lba('{32'd0,fdd_lba,fdd_lba,fdd_lba,fdd_lba}),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din('{sd_buff_din,sd_buff_din,sd_buff_din}),
+	.sd_buff_din('{16'd0,fdd_buff_din,fdd_buff_din,fdd_buff_din,fdd_buff_din}),
 	.sd_buff_wr(sd_buff_wr),
 
 	.img_mounted(img_mounted),
@@ -293,10 +300,10 @@ wire        port_write   = bus_stb & port_sel   & bus_we;
 
 reg   [2:0] dout_delay;
 always @(posedge clk_sys) if(ce_bus_2) dout_delay <= {dout_delay[1:0], cpu_dout_out};
-always @(posedge clk_sys) if(ce_bus_2) cpu_ack <= keyboard_ack | scrreg_ack | ram_ack | disk_ack | ivec_ack;
+always @(posedge clk_sys) if(ce_bus_2) cpu_ack <= keyboard_ack | scrreg_ack | ram_ack | disk_ack | fdc_ack | ivec_ack;
 
 reg  [15:0] cpu_din;
-always @(posedge clk_sys) cpu_din <= cpureg_data | keyboard_data | scrreg_data | ram_data | sysreg_data | port_data | ivec_data;
+always @(posedge clk_sys) cpu_din <= cpureg_data | keyboard_data | scrreg_data | ram_data | sysreg_data | port_data | fdc_data | ivec_data;
 
 reg  super_flg  = 1'b0;
 wire sysreg_acc = bus_stb & sysreg_sel;
@@ -532,7 +539,7 @@ video video
 );
 
 
-//////////////////////////   DISK, TAPE   /////////////////////////////
+//////////////////////////   TAPE (BIN), EXT MODE   ///////////////////
 wire        disk_ack;
 wire        reset_req;
 wire        dsk_copy;
@@ -543,6 +550,110 @@ wire [15:0] dsk_copy_dout;
 wire        dsk_copy_we;
 wire        dsk_copy_rd;
 
-disk disk(.*, .img_size(img_size[40:9]), .reset(cpu_dclo), .reset_full(status[2]), .bus_ack(disk_ack), .sd_ack(|sd_ack));
+disk disk(.*, .reset(cpu_dclo), .bus_ack(disk_ack));
+
+
+//////////////////////////   FLOPPY DISKS   ///////////////////////////
+// The KNGMD: a KR1801VP1-128 at 177130/177132 and four drives.  A drive
+// has a disk when a non-empty image is mounted in it; one mounted
+// read-only is write protected, and the OSD can protect them all.
+reg [DRIVES-1:0] mount_dsk = 0;
+reg [DRIVES-1:0] img_ro    = 0;
+
+always @(posedge clk_sys)
+	for(int i = 0; i < DRIVES; i++)
+		if(img_mounted[FDD0 + i]) begin
+			mount_dsk[i] <= |img_size;
+			img_ro[i]    <= img_readonly;
+		end
+
+wire [DRIVES-1:0] fdd_wprot = img_ro | {DRIVES{status[17]}};
+
+wire [15:0] fdc_data;
+wire        fdc_ack;
+wire [15:0] fdd_data_in;      // controller -> drive
+wire [15:0] fdd_data_out;     // drive -> controller
+wire        fdd_write;
+wire  [1:0] fdd_drive;
+wire        fdd_motor;
+wire        fdd_step;
+wire        fdd_dir;
+wire        fdd_head;
+wire        fdd_valid;
+wire        fdd_sync;
+wire        fdd_crc_ok;
+wire        fdd_rdy;
+wire        fdd_tr0;
+wire        fdd_ind;
+
+// SMK512 / A16M: bit 2 of the mode register hides the controller from reads
+wire        fdc_rd_block = status[9] & ext_mode[2];
+
+vp1_128 fdc
+(
+	.clk_sys(clk_sys),
+	.reset(cpu_dclo),
+	.enable(disk_rom),
+	.rd_block(fdc_rd_block),
+
+	.bus_din(bus_din),
+	.bus_dout(fdc_data),
+	.bus_addr(bus_addr),
+	.bus_sync(bus_sync),
+	.bus_we(bus_we),
+	.bus_stb(bus_stb),
+	.bus_ack(fdc_ack),
+
+	.data_in(fdd_data_out),
+	.data_out(fdd_data_in),
+	.write(fdd_write),
+	.drive(fdd_drive),
+	.motor(fdd_motor),
+	.step(fdd_step),
+	.dir(fdd_dir),
+	.head(fdd_head),
+	.valid(fdd_valid),
+	.sync(fdd_sync),
+	.crc_ok(fdd_crc_ok),
+	.rdy(fdd_rdy),
+	.tr0(fdd_tr0),
+	.ind(fdd_ind),
+	.wprot_dsk(fdd_wprot)
+);
+
+fdd4 #(.CLK_HZ(96000000)) fdd
+(
+	.clk(clk_sys),
+	.rst(cpu_dclo),
+
+	.data_in(fdd_data_in),
+	.data_out(fdd_data_out),
+	.write(fdd_write),
+
+	.drive(fdd_drive),
+	.motor(fdd_motor),
+	.step(fdd_step),
+	.dir(fdd_dir),
+	.head(fdd_head),
+	.valid(fdd_valid),
+	.sync(fdd_sync),
+	.crc_ok(fdd_crc_ok),
+	.rdy(fdd_rdy),
+	.tr0(fdd_tr0),
+	.ind(fdd_ind),
+
+	.mount_dsk(mount_dsk),
+	.wprot_dsk(fdd_wprot),
+
+	.sd_lba(fdd_lba),
+	.sd_rd(sd_rd[FDD0 +: DRIVES]),
+	.sd_wr(sd_wr[FDD0 +: DRIVES]),
+	.sd_ack(sd_ack[FDD0 +: DRIVES]),
+	.sd_buff_addr(sd_buff_addr),
+	.sd_buff_dout(sd_buff_dout),
+	.sd_buff_din(fdd_buff_din),
+	.sd_buff_wr(sd_buff_wr)
+);
+
 
 endmodule
