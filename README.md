@@ -5,8 +5,7 @@ This project of [popular USSR home computer](https://en.wikipedia.org/wiki/Elect
 ### Features:
 - Fully functional BK0011M and BK0010 with close to real CPU and Video timings (need furter corrections)
 - Turbo mode (6MHz for BK0010, 8MHz for BK0011M)
-- Raw DSK image support (read-only, Disk A)
-- Multipatitioned VHD image (read-write, Disk C+)
+- Floppy controller KR1801VP1-128 with drives A-D (read, write, format), raw DSK/IMG/BKD images
 - BIN file support for BK0010 mode (only single file apps are supported)
 - A16M extension for BK0010 (support for short and long resets)
 - SMK512 extension for BK0011M
@@ -22,9 +21,6 @@ Copy the *.rbf file at the root of the SD card.
 There are couple disk images in [extra](https://github.com/MiSTer-devel/BK0011M_MiSTer/tree/master/extra) folder with CSIDOS OS with complete ecosystem (viewer,text editor, music editor, debugger, etc.) written by me more than 20 years ago. Image also incudes some music and utils written by different people.
 
 *Most documents are in Russian languange.*
-
-### HDD Utility
-Supplied [HDD Utility](https://github.com/MiSTer-devel/BK0011M_MiSTer/tree/master/SW/bkhdutil.exe) can be used to concatenate separate DSK image into one VHD image. You can put it to root of SD card. If you will name it as bk0011m.vhd then it will autoload at start.
 
 Press F12 to access OSD menu.
 
