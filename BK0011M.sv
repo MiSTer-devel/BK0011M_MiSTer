@@ -35,7 +35,7 @@ assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DD
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign LED_USER  = dsk_copy;
-assign LED_DISK  = {1'b0, fdd_motor};
+assign LED_DISK  = {1'b0, fdd_motor | hdd_active};
 assign LED_POWER = 0;
 assign BUTTONS   = 0;
 assign VGA_SCALER= 0;
@@ -119,18 +119,22 @@ wire  [1:0] buttons;
 wire        forced_scandoubler;
 wire [31:0] status;
 
-// image slots: 1-4 the floppy drives A-D, 0 reserved for a hard disk
+// image slots: 0 the SMK hard disk, 1-4 the floppy drives A-D (Main
+// auto-mounts boot0.vhd..boot3.vhd: the hard disk and drives A-C)
 localparam DRIVES = 4;
+localparam HDD    = 0;
 localparam FDD0   = 1;
 localparam SLOTS  = 5;
 
 wire [31:0] fdd_lba;
+wire [31:0] hdd_lba;
 wire [SLOTS-1:0] sd_rd;
 wire [SLOTS-1:0] sd_wr;
 wire [SLOTS-1:0] sd_ack;
 wire  [7:0] sd_buff_addr;
 wire [15:0] sd_buff_dout;
 wire [15:0] fdd_buff_din;
+wire [15:0] hdd_buff_din;
 wire        sd_buff_wr;
 
 wire [SLOTS-1:0] img_mounted;
@@ -154,6 +158,7 @@ localparam CONF_STR =
 	"D2S2,DSKIMGBKD,Mount FDD B;",
 	"D2S3,DSKIMGBKD,Mount FDD C;",
 	"D2S4,DSKIMGBKD,Mount FDD D;",
+	"H0D2S0,HDIHDSIMG,Mount HDD (SMK512);",
 	"-;",
 	"O3,Monochrome,No,Yes;",
 	"ODE,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
@@ -200,13 +205,13 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(SLOTS)) hps_io
 
 	.gamma_bus(gamma_bus),
 
-	.sd_lba('{32'd0,fdd_lba,fdd_lba,fdd_lba,fdd_lba}),
+	.sd_lba('{hdd_lba,fdd_lba,fdd_lba,fdd_lba,fdd_lba}),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din('{16'd0,fdd_buff_din,fdd_buff_din,fdd_buff_din,fdd_buff_din}),
+	.sd_buff_din('{hdd_buff_din,fdd_buff_din,fdd_buff_din,fdd_buff_din,fdd_buff_din}),
 	.sd_buff_wr(sd_buff_wr),
 
 	.img_mounted(img_mounted),
@@ -300,10 +305,10 @@ wire        port_write   = bus_stb & port_sel   & bus_we;
 
 reg   [2:0] dout_delay;
 always @(posedge clk_sys) if(ce_bus_2) dout_delay <= {dout_delay[1:0], cpu_dout_out};
-always @(posedge clk_sys) if(ce_bus_2) cpu_ack <= keyboard_ack | scrreg_ack | ram_ack | disk_ack | fdc_ack | ivec_ack;
+always @(posedge clk_sys) if(ce_bus_2) cpu_ack <= keyboard_ack | scrreg_ack | ram_ack | disk_ack | fdc_ack | ide_ack | ivec_ack;
 
 reg  [15:0] cpu_din;
-always @(posedge clk_sys) cpu_din <= cpureg_data | keyboard_data | scrreg_data | ram_data | sysreg_data | port_data | fdc_data | ivec_data;
+always @(posedge clk_sys) cpu_din <= cpureg_data | keyboard_data | scrreg_data | ram_data | sysreg_data | port_data | fdc_data | ide_data | ivec_data;
 
 reg  super_flg  = 1'b0;
 wire sysreg_acc = bus_stb & sysreg_sel;
@@ -655,5 +660,42 @@ fdd4 #(.CLK_HZ(96000000)) fdd
 	.sd_buff_wr(sd_buff_wr)
 );
 
+
+//////////////////////////   HARD DISK   //////////////////////////////
+// The SMK512's IDE controller at 177740-177757, in BK0011M mode with the
+// SMK512 enabled.
+wire [15:0] ide_data;
+wire        ide_ack;
+wire        hdd_active;
+
+smk_ide hdd
+(
+	.clk_sys(clk_sys),
+	.reset(cpu_dclo),
+	.enable(disk_rom & status[9] & ~bk0010),
+
+	.bus_din(bus_din),
+	.bus_dout(ide_data),
+	.bus_addr(bus_addr),
+	.bus_sync(bus_sync),
+	.bus_we(bus_we),
+	.bus_wtbt(bus_wtbt),
+	.bus_stb(bus_stb),
+	.bus_ack(ide_ack),
+
+	.img_mounted(img_mounted[HDD]),
+	.img_readonly(img_readonly),
+	.img_size(img_size),
+	.sd_lba(hdd_lba),
+	.sd_rd(sd_rd[HDD]),
+	.sd_wr(sd_wr[HDD]),
+	.sd_ack(sd_ack[HDD]),
+	.sd_buff_addr(sd_buff_addr),
+	.sd_buff_dout(sd_buff_dout),
+	.sd_buff_din(hdd_buff_din),
+	.sd_buff_wr(sd_buff_wr),
+
+	.active(hdd_active)
+);
 
 endmodule
