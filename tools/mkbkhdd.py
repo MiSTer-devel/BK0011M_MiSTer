@@ -2,7 +2,7 @@
 """mkbkhdd.py - assemble an AltPro (SMK-512) or Samara hard disk image for the
 BK out of floppy images.
 
-    mkbkhdd.py -o disk.img -m mbr.bin [--boot N] [--hdi] image1.dsk image2.dsk ...
+    mkbkhdd.py -o disk.img [-m mbr.bin] [--boot N] [--hdi] image1.dsk image2.dsk ...
     mkbkhdd.py --samara -o disk.img [--boot N] [--hdi] image1.dsk image2.dsk ...
 
 Each floppy image (819200 or 409600 bytes, raw sectors) becomes one logical
@@ -12,7 +12,7 @@ drive's data is stored complemented (the SMK inverts the bus), as a raw dump
 of a real SMK disk is.  Layout (BIOS v2.05, see the SMK documentation):
 
     sectors 0-6   the MBR, loaded to 20000 and run if it starts with NOP
-                  (taken from an existing image: -m mbr.bin, 7 sectors,
+                  (altpro_mbr.bin next to this script, or -m: 7 sectors,
                   stored form)
     sector 7      the copy of 176000-176777: geometry at 176772/4/6, the
                   number of logical disks and the boot unit at 176770, the
@@ -41,7 +41,8 @@ def inv(b): return bytes(x ^ 0xFF for x in b)
 
 ap = argparse.ArgumentParser()
 ap.add_argument("-o", "--out", required=True)
-ap.add_argument("-m", "--mbr", help="AltPro: 7 sectors of MBR in stored (inverted) form")
+ap.add_argument("-m", "--mbr", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "altpro_mbr.bin"),
+                help="AltPro: 7 sectors of MBR in stored (inverted) form")
 ap.add_argument("--samara", action="store_true", help="Samara layout instead of AltPro")
 ap.add_argument("--boot", type=int, default=2, help="boot unit, 2 = C:")
 ap.add_argument("--hdi", action="store_true", help="prepend the 512-byte BKEmu .hdi header")
