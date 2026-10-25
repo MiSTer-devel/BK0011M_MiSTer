@@ -395,6 +395,8 @@ endtask
 wire [15:0] rd_word = id_mode ? ident(bufoff, geo_cyl, heads_r, spt_r, data_secs) : bdout;
 // the drive address register: drive 0 selected, head bits, write gate off
 wire  [7:0] dar = {1'b0, 1'b1, 1'b1, ~curhead, 1'b1, 1'b0};
+// the head register's DEV bit: the slave, which is not there
+wire        dev1 = curheadreg[4];
 
 always @(posedge clk_sys) begin
 	old_stb <= bus_stb;
@@ -437,7 +439,8 @@ always @(posedge clk_sys) begin
 		// write takes the value there.  Everything inverted.
 		//----------------------------------------------------------------
 		if (rd_strobe) begin
-			case (ridx)
+			if (dev1) dout_r <= 16'hFFFF;                     // the slave: nobody there, status 0
+			else case (ridx)
 			REG_DATA: begin
 				dout_r <= ~rd_word;
 				if (status & ST_DRQ) begin
@@ -478,7 +481,9 @@ always @(posedge clk_sys) begin
 					end
 					if (control[CTL_SRST] && !wbyte[CTL_SRST]) drive_reset;
 				end
-			end else begin
+			end else if (!dev1 || ridx == REG_HEAD || (ridx == REG_STATUS && wbyte == 8'h90)) begin
+				// the slave selected: only the head register (to come back) and
+				// EXECUTE DIAGNOSTICS reach the drive
 				case (ridx)
 				REG_DATA: if (status & ST_DRQ) begin            // DATA write
 					bwr    <= 1'b1;
