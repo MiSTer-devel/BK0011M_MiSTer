@@ -205,7 +205,7 @@ always @(posedge clk_sys) begin
 	end
 	P_WAIT: if(!acked) begin probing <= 1'b0; pst <= P_GEO; end
 	P_GEO: begin
-		if(p_sig && p_heads[7:0] != 8'd0 && p_heads[7:0] <= 8'd16 && p_spt[7:0] != 8'd0 && p_spt[7:0] <= 8'd63) begin
+		if(p_sig && p_heads[7:0] != 8'd0 && p_heads[7:0] <= 8'd16 && p_spt[7:0] != 8'd0 && p_spt[15:8] == 8'd0) begin
 			geo_hdr   <= 1'b1;
 			geo_spt   <= p_spt[7:0];
 			geo_heads <= p_heads[7:0];
