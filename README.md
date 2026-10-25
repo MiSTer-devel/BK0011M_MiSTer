@@ -5,11 +5,13 @@ This project of [popular USSR home computer](https://en.wikipedia.org/wiki/Elect
 ### Features:
 - Fully functional BK0011M and BK0010 with close to real CPU and Video timings (need furter corrections)
 - Turbo mode (6MHz for BK0010, 8MHz for BK0011M)
+- Disk controller selectable for both models: standard KNGMD (4 drives), A16M, SMK512, standard KNGMD + Samara HDD (2 drives each), or none
 - Floppy controller KR1801VP1-128 with drives A-D (read, write, format), raw DSK/IMG/BKD images
-- SMK-512 IDE hard disk (BK0011M + SMK512 option): raw SMK disk dumps (.hds/.img, data stored inverted as on the real disk) or BKEmu .hdi images; `tools/mkbkhdd.py` builds one out of floppy images. Image slot 0: `boot0.vhd` in games/BK0011M/ is mounted at start.
+- SMK-512 IDE hard disk (Disk controller = SMK512): raw SMK disk dumps (.hds/.img, data stored inverted as on the real disk) or BKEmu .hdi images; `tools/mkbkhdd.py` builds one out of floppy images. Image slot 0: `boot0.vhd` in games/BK0011M/ is mounted at start.
+- Samara HDD controller (Disk controller = Samara): standard KNGMD with the Samara disk ROM and the IDE registers at 177620-177656, Samara-format images (.hdi or raw), C: and up through the ROM's disk calls
 - BIN file support for BK0010 mode (only single file apps are supported)
-- A16M extension for BK0010 (support for short and long resets)
-- SMK512 extension for BK0011M
+- A16M extension (support for short and long resets)
+- SMK512 extension
 - YM2149 with 1.71MHz clock
 - Joystick
 - Mouse
