@@ -119,8 +119,7 @@ sdram ram
 `define ROM_P12    25'HE8000 // (empty)
 `define ROM_P13    25'HEC000 // Debugger (13;1C 100000G)
 `define BIOS11     25'HF0000 //
-`define DISKSTD    25'HF2000 // BK0011M disk ROM (326)
-`define DISK10     25'HF3000 // BK0010 disk ROM (253)
+`define DISKSTD    25'HF2000 // Disk ROM (326)
                              //
 `define BIOS10     25'HF4000 //
 `define BASIC10    25'HF6000 //
@@ -469,7 +468,7 @@ wire        a16m_7 = (mem_copy ? mem_copy_we : bus_we) ? a16m_7wr : a16m_7en;
 wire [24:0] map10de   = ((addr[15:12] == 4'b1111) && !a16m_7) ? `NOMEM : a16m_page[addr[14:13]];
 wire [24:0] map10ds   = (addr[15:13] == 4'b101) ? `RAM_P02 : // two different pages because not aligned to 8kb
                         (addr[15:13] == 4'b110) ? `RAM_P03 : // ---/---
-                        (addr[15:13] == 4'b111) ? `DISK10  : 25'H0;
+                        (addr[15:13] == 4'b111) ? `DISKSTD : 25'H0;
 wire [24:0] map10d    = ext_rom ? map10de : map10ds;
 wire [24:0] map10s[8] = '{`RAM_P00, `RAM_P00+25'H2000, `RAM_P05, `RAM_P05+25'H2000, `BIOS10, `BASIC10, `BASIC10+25'H2000, `BASIC10+25'H4000};
 wire [24:0] map10     = ((addr[15] && disk_rom && map10d && !bk0010_stub) ? map10d : map10s[addr[15:13]]) | addr[12:0];
