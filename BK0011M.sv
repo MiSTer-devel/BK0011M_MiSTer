@@ -525,8 +525,12 @@ assign def_left_ch  = psg_active ? {1'b0, channel_a, 1'b0} + {2'b00, channel_b} 
 assign def_right_ch = psg_active ? {1'b0, channel_c, 1'b0} + {2'b00, channel_b} + {2'b00, spk_out, 5'b00000} : {spk_out, 7'b0000000};
 
 assign AUDIO_S = 0;
-assign AUDIO_L = {covox_enable ? {1'b0, out_port_data[7:0],  1'b0} + {2'b00, spk_out, 5'b00000} : def_left_ch,  6'd0};
-assign AUDIO_R = {covox_enable ? {1'b0, out_port_data[15:8], 1'b0} + {2'b00, spk_out, 5'b00000} : def_right_ch, 6'd0};
+// Covox x3: its full scale equals the PSG's (three channels at maximum), as in BKEmu
+wire [9:0] covox_l = {1'b0, out_port_data[7:0],  1'b0} + {2'b00, out_port_data[7:0]};
+wire [9:0] covox_r = {1'b0, out_port_data[15:8], 1'b0} + {2'b00, out_port_data[15:8]};
+
+assign AUDIO_L = {covox_enable ? covox_l + {2'b00, spk_out, 5'b00000} : def_left_ch,  6'd0};
+assign AUDIO_R = {covox_enable ? covox_r + {2'b00, spk_out, 5'b00000} : def_right_ch, 6'd0};
 assign AUDIO_MIX = status[11:10];
 
 
