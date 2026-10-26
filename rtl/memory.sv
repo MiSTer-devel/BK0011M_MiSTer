@@ -122,8 +122,7 @@ sdram ram
 `define SAMARA_ROM 25'HEA000 // Samara disk ROM (326 with the HDD driver); the 160000 window ORs addr[13:0]
 `define ROM_P13    25'HEC000 // Debugger (13;1C 100000G)
 `define BIOS11     25'HF0000 //
-`define DISKSTD    25'HF2000 // BK0011M disk ROM (326)
-`define DISK10     25'HF3000 // BK0010 disk ROM (253)
+`define DISKSTD    25'HF2000 // Disk ROM (326)
                              //
 `define BIOS10     25'HF4000 //
 `define BASIC10    25'HF6000 //
@@ -495,7 +494,7 @@ wire [24:0] map11  = (addr[15] && ext_rom && mape) ? mape : map11s;
 
 wire [24:0] map10ds   = (addr[15:13] == 4'b101) ? `RAM_P02 : // two different pages because not aligned to 8kb
                         (addr[15:13] == 4'b110) ? `RAM_P03 : // ---/---
-                        (addr[15:13] == 4'b111) ? (samara ? `SAMARA_ROM : `DISK10) : 25'H0;
+                        (addr[15:13] == 4'b111) ? (samara ? `SAMARA_ROM : `DISKSTD) : 25'H0;
 wire [24:0] map10d    = ext_rom ? mape : map10ds;
 wire [24:0] map10s[8] = '{`RAM_P00, `RAM_P00+25'H2000, `RAM_P05, `RAM_P05+25'H2000, `BIOS10, `BASIC10, `BASIC10+25'H2000, `BASIC10+25'H4000};
 wire [24:0] map10     = ((addr[15] && disk_rom && map10d && !bk0010_stub) ? map10d : map10s[addr[15:13]]) | addr[12:0];
