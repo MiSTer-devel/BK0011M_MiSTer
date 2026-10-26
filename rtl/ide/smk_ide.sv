@@ -18,13 +18,18 @@
 // the BIOS sets it (SETPRM), or LBA28 with bit 6 of the head register.
 // Multi-sector reads are read ahead into a second buffer bank.
 //
+// With samara set it is the Samara controller instead: the same registers at
+// 177640-177656, the control block as two words, 177620 drive address and
+// 177622 alt. status / device control (BKEmu's map).
+//
 // Transfer engine from UKNC_MiSTer's ide.v on the BK bus and the SMK map.
 //
 module smk_ide
 (
 	input             clk_sys,
 	input             reset,        // power-on reset
-	input             enable,       // the SMK is in the machine
+	input             enable,       // the controller is in the machine
+	input             samara,       // the Samara register map instead of the SMK's
 
 	input      [15:0] bus_din,
 	output     [15:0] bus_dout,
@@ -71,12 +76,17 @@ localparam [7:0] DEF_HEADS = 8'd16, DEF_SPT = 8'd63;
 //------------------------------------------------------------------------
 // The bus
 //------------------------------------------------------------------------
-wire        sel   = enable & bus_sync & (bus_addr[15:4] == 12'o7776);   // 177740..177757
-wire  [2:0] ridx  = ~bus_addr[3:1];
-wire        odd   = bus_addr[0];
+wire        smk_sel = bus_addr[15:4] == 12'o7776;                        // 177740..177757
+wire        sam_sel = bus_addr[15:4] == 12'o7772;                        // 177640..177657
+wire        sam_ctl = bus_addr[15:2] == 14'o37744;                       // 177620..177623
+wire        sel   = enable & bus_sync & (samara ? (sam_sel | sam_ctl) : smk_sel);
+// the control block: REG_HEAD = alt. status / device control, REG_STATUS =
+// drive address; at the odd addresses of the SMK, at 177622/177620 of the Samara
+wire        ctl   = samara ? sam_ctl : bus_addr[0];
+wire  [2:0] ridx  = (samara & sam_ctl) ? (bus_addr[1] ? REG_HEAD : REG_STATUS) : ~bus_addr[3:1];
 // the byte a write carries: the low one, or the high one of a byte write
 // to an odd address
-wire  [7:0] wbyte = ~((odd & ~bus_wtbt[0]) ? bus_din[15:8] : bus_din[7:0]);
+wire  [7:0] wbyte = ~((bus_addr[0] & ~bus_wtbt[0]) ? bus_din[15:8] : bus_din[7:0]);
 wire [15:0] wword = ~bus_din;
 
 assign bus_ack = bus_stb & sel;
@@ -195,7 +205,7 @@ always @(posedge clk_sys) begin
 	end
 	P_WAIT: if(!acked) begin probing <= 1'b0; pst <= P_GEO; end
 	P_GEO: begin
-		if(p_sig && p_heads[7:0] != 8'd0 && p_heads[7:0] <= 8'd16 && p_spt[7:0] != 8'd0 && p_spt[7:0] <= 8'd63) begin
+		if(p_sig && p_heads[7:0] != 8'd0 && p_heads[7:0] <= 8'd16 && p_spt[7:0] != 8'd0 && p_spt[15:8] == 8'd0) begin
 			geo_hdr   <= 1'b1;
 			geo_spt   <= p_spt[7:0];
 			geo_heads <= p_heads[7:0];
@@ -385,6 +395,8 @@ endtask
 wire [15:0] rd_word = id_mode ? ident(bufoff, geo_cyl, heads_r, spt_r, data_secs) : bdout;
 // the drive address register: drive 0 selected, head bits, write gate off
 wire  [7:0] dar = {1'b0, 1'b1, 1'b1, ~curhead, 1'b1, 1'b0};
+// the head register's DEV bit: the slave, which is not there
+wire        dev1 = curheadreg[4];
 
 always @(posedge clk_sys) begin
 	old_stb <= bus_stb;
@@ -427,7 +439,8 @@ always @(posedge clk_sys) begin
 		// write takes the value there.  Everything inverted.
 		//----------------------------------------------------------------
 		if (rd_strobe) begin
-			case (ridx)
+			if (dev1) dout_r <= 16'hFFFF;                     // the slave: nobody there, status 0
+			else case (ridx)
 			REG_DATA: begin
 				dout_r <= ~rd_word;
 				if (status & ST_DRQ) begin
@@ -449,15 +462,15 @@ always @(posedge clk_sys) begin
 			REG_SECTOR: dout_r <= ~{8'h00, cursector};
 			REG_CYL_LO: dout_r <= ~{8'h00, curcyl[7:0]};
 			REG_CYL_HI: dout_r <= ~{8'h00, curcyl[15:8]};
-			REG_HEAD:   dout_r <= ~{status, curheadreg};     // 177743: alternate status
-			REG_STATUS: dout_r <= ~{dar, status};            // 177741: drive address
+			REG_HEAD:   dout_r <= (samara & ctl) ? ~{8'h00, status} : ~{status, curheadreg};   // 177743 / 177622: alternate status
+			REG_STATUS: dout_r <= (samara & ctl) ? ~{8'h00, dar}    : ~{dar, status};         // 177741 / 177620: drive address
 			endcase
 		end
 
 		if (wr_strobe) begin
-			if (odd) begin
-				// 177743: device control.  SRST set: BUSY; released: the
-				// drive comes up again.  177741 takes nothing.
+			if (ctl) begin
+				// 177743 / 177622: device control.  SRST set: BUSY; released:
+				// the drive comes up again.  177741 / 177620 takes nothing.
 				if (ridx == REG_HEAD) begin
 					control <= wbyte;
 					if (!control[CTL_SRST] && wbyte[CTL_SRST]) begin
@@ -468,7 +481,9 @@ always @(posedge clk_sys) begin
 					end
 					if (control[CTL_SRST] && !wbyte[CTL_SRST]) drive_reset;
 				end
-			end else begin
+			end else if (!dev1 || ridx == REG_HEAD || (ridx == REG_STATUS && wbyte == 8'h90)) begin
+				// the slave selected: only the head register (to come back) and
+				// EXECUTE DIAGNOSTICS reach the drive
 				case (ridx)
 				REG_DATA: if (status & ST_DRQ) begin            // DATA write
 					bwr    <= 1'b1;

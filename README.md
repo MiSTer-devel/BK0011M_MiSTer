@@ -5,11 +5,13 @@ This project of [popular USSR home computer](https://en.wikipedia.org/wiki/Elect
 ### Features:
 - Fully functional BK0011M and BK0010 with close to real CPU and Video timings (need furter corrections)
 - Turbo mode (6MHz for BK0010, 8MHz for BK0011M)
+- Disk controller selectable for both models: standard KNGMD (4 drives), A16M, SMK512, standard KNGMD + Samara HDD (2 drives each), or none
 - Floppy controller KR1801VP1-128 with drives A-D (read, write, format), raw DSK/IMG/BKD images
-- SMK-512 IDE hard disk (BK0011M + SMK512 option): raw SMK disk dumps (.hds/.img, data stored inverted as on the real disk) or BKEmu .hdi images; `tools/mkbkhdd.py` builds one out of floppy images. Image slot 0: `boot0.vhd` in games/BK0011M/ is mounted at start.
+- SMK-512 IDE hard disk (Disk controller = SMK512): raw SMK disk dumps (.hds/.img, data stored inverted as on the real disk) or BKEmu .hdi images. Image slot 0: `boot0.vhd` in games/BK0011M/ is mounted at start.
+- Samara HDD controller (Disk controller = Samara): standard KNGMD with the Samara disk ROM and the IDE registers at 177620-177656, Samara-format images (.hdi or raw), C: and up through the ROM's disk calls
 - BIN file support for BK0010 mode (only single file apps are supported)
-- A16M extension for BK0010 (support for short and long resets)
-- SMK512 extension for BK0011M
+- A16M extension (support for short and long resets)
+- SMK512 extension
 - YM2149 with 1.71MHz clock
 - Joystick
 - Mouse
@@ -52,6 +54,15 @@ Press F12 to access OSD menu.
 | Left Ctrl   | РУС           |
 | Right Ctrl  | УС (Ctrl)     |
 | Alt         | АР2 (Alt)     |
+
+### Disk images:
+Floppies are raw 800 KB (or 400 KB) dumps: .dsk, .img, .bkd. A hard disk is an AltPro (SMK-512) or Samara image: a raw dump of a real disk or a BKEmu .hdi; `tools/mkbkhdd.py` makes one out of floppy images (`--samara` for the Samara layout), each becoming a logical disk from C: on:
+
+    tools/mkbkhdd.py -o games.img --hdi ANDOS330.DSK CSIDOS_330.DSK ...
+
+The SMK BIOS boots the boot unit (C: unless `--boot`). An OS copied from a floppy may still look for its files on A:, as its floppy configuration says: use an OS set up for the hard disk, or keep a floppy in A:. In BK0010 mode the disk ROM does not boot by itself: at the monitor's `?` prompt type `S 160000`.
+
+The old `bkhdutil` images (BKHD header, ROM hooks) are not supported any more.
 
 ### Additional info:
 ROM contains debugger which can be launched by following commands from Monitor:
