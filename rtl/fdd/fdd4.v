@@ -92,7 +92,6 @@ reg  [ 3:0] no_sec     =   4'd8;
 reg  [ 7:0] no_trk     =   8'd5;
 reg         clk_dsk    =      0;   // one clock high per word - an ENABLE, not a clock
 reg         clk_dsk_n  =      0;   // the same, one cycle later
-reg         clk_dsk_n1 =      0;
 //---------------------------------------------------------------------------------
 // Everything is on clk, the sector interface included.
 //---------------------------------------------------------------------------------
@@ -123,8 +122,8 @@ reg         _data = 1'b0;
 always @(*)
 	case({disk_insert,_data,_sek,_trk})
 	'b1000 : data_out = data_raw;
-	'b1001 : data_out = {1'b0,no_trk,7'd0,head};
-	'b1010 : data_out = {4'd0,no_sec+1'b1,8'd2};
+	'b1001 : data_out = {no_trk,7'd0,head};
+	'b1010 : data_out = {3'd0,no_sec+1'b1,8'd2};
 	'b1100 : data_out = {data_sec[7:0],data_sec[15:8]};
 	default: data_out = GAP_WORD;
 	endcase
@@ -140,7 +139,6 @@ always @(posedge clk)
 		word_sectr <=  9'h0;
 		clk_dsk    <=  1'b0;
 		clk_dsk_n  <=  1'b0;
-		clk_dsk_n1 <=  1'b0;
 		count_clk  <=  0;
 		head_old   <=  head;
 		drive_old  <= drive;
@@ -148,9 +146,8 @@ always @(posedge clk)
 //------ disk rotate immitation ---------------------------------------------------
 		clk_dsk    <=       1'b0;
 		clk_dsk_n  <=    clk_dsk;
-		clk_dsk_n1 <=  clk_dsk_n;
 
-		count_clk <= count_clk==WORD_CYCLES-1 ? 0 : count_clk + 1'b1;
+		count_clk <= count_clk==WORD_CYCLES-1 ? 13'd0 : count_clk + 1'b1;
 		if(!count_clk)begin
 			clk_dsk <= 1'b1;
 			if(word_sectr==W_TRACK_LAST)begin no_sec <= 4'h0; word_sectr <= 9'h0; end
@@ -295,7 +292,7 @@ always @(posedge clk)begin
 		CAP_SEK:begin
 			cap_state <= CAP_IDLE;
 			hdr_valid <= wr_sec >= 1 && wr_sec <= SECTORS;
-			hdr_sec   <= wr_sec - 1'd1;
+			hdr_sec   <= wr_sec[3:0] - 1'd1;
 		end
 		CAP_DATA:begin
 			wbuf[cap_idx] <= data_in;

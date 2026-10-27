@@ -181,7 +181,7 @@ localparam [5:0] DIV_STEPS = 6'd32;
 reg  [7:0]  geo_spt = DEF_SPT, geo_heads = DEF_HEADS;
 reg  [15:0] geo_cyl = 16'd0;
 reg         geo_hdr = 1'b0;          // the image starts with the .hdi header sector
-wire [15:0] geo_hs = geo_spt * geo_heads;
+//wire [15:0] geo_hs = geo_spt * geo_heads;
 
 localparam [2:0] P_IDLE = 3'd0, P_REQ = 3'd1, P_WAIT = 3'd2, P_GEO = 3'd3, P_DIV = 3'd4, P_CYL = 3'd5;
 reg  [2:0]  pst = P_IDLE;
@@ -246,7 +246,7 @@ end
 //------------------------------------------------------------------------
 reg  [7:0]  status = ST_BUSY, error = ER_NONE;
 reg  [8:0]  sectorcount = 9'd0;      // 1..256
-reg  [7:0]  cursector = 8'd0, curheadreg = 8'd0, features = 8'd0, control = 8'd0;
+reg  [7:0]  cursector = 8'd0, curheadreg = 8'd0, /*features = 8'd0,*/ control = 8'd0;
 reg  [3:0]  curhead = 4'd0;
 reg  [15:0] curcyl = 16'd0;
 reg  [7:0]  spt_r = DEF_SPT, heads_r = DEF_HEADS;
@@ -287,7 +287,7 @@ function [15:0] ident;
 		8'd0:  ident = 16'h045a;
 		8'd1:  ident = cyl;
 		8'd3:  ident = {8'd0, hd};
-		8'd4:  ident = {sp, 1'b0, 8'd0};               // bytes per track = spt * 512
+		8'd4:  ident = {sp[6:0], 1'b0, 8'd0};               // bytes per track = spt * 512
 		8'd5:  ident = 16'd512;
 		8'd6:  ident = {8'd0, sp};
 		8'd10, 8'd11, 8'd12, 8'd13, 8'd14, 8'd15, 8'd16, 8'd17, 8'd18, 8'd19:
@@ -394,7 +394,7 @@ endtask
 // the data word the bus reads
 wire [15:0] rd_word = id_mode ? ident(bufoff, geo_cyl, heads_r, spt_r, data_secs) : bdout;
 // the drive address register: drive 0 selected, head bits, write gate off
-wire  [7:0] dar = {1'b0, 1'b1, 1'b1, ~curhead, 1'b1, 1'b0};
+wire  [7:0] dar = {1'b1, 1'b1, ~curhead, 1'b1, 1'b0};
 // the head register's DEV bit: the slave, which is not there
 wire        dev1 = curheadreg[4];
 
@@ -502,7 +502,7 @@ always @(posedge clk_sys) begin
 					end else
 						bufoff <= bufoff + 8'd1;
 				end
-				REG_ERROR:  features <= wbyte;
+				//REG_ERROR:  features <= wbyte;
 				REG_COUNT:  sectorcount <= (wbyte == 8'd0) ? 9'd256 : {1'b0, wbyte};
 				REG_SECTOR: cursector <= wbyte;
 				REG_CYL_LO: curcyl[7:0] <= wbyte;
