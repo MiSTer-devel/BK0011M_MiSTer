@@ -62,7 +62,7 @@ Floppies are raw 800 KB (or 400 KB) dumps: .dsk, .img, .bkd. A hard disk is an A
 
 The SMK BIOS boots the boot unit (C: unless `--boot`). An OS copied from a floppy may still look for its files on A:, as its floppy configuration says: use an OS set up for the hard disk, or keep a floppy in A:. In BK0010 mode the disk ROM does not boot by itself: at the monitor's `?` prompt type `S 160000`.
 
-The old `bkhdutil` images (BKHD header, ROM hooks) are not supported any more.
+Images of the old core (`bkhdutil`'s .vhd with the BKHD header) mount with Disk controller = Samara: their partitions become C:, D:, ... and the disk boots from C:.
 
 ### Additional info:
 ROM contains debugger which can be launched by following commands from Monitor:

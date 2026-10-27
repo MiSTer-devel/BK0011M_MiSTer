@@ -169,7 +169,7 @@ localparam CONF_STR =
 	"D2S2,DSKIMGBKD,Mount FDD B;",
 	//"H3S3,DSKIMGBKD,Mount FDD C;",
 	//"H3S4,DSKIMGBKD,Mount FDD D;",
-	"D4S0,HDIHDSIMG,Mount HDD;",
+	"D4S0,HDIHDSIMGVHD,Mount HDD;",
 	"-;",
 	"O3,Monochrome,No,Yes;",
 	"ODE,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
