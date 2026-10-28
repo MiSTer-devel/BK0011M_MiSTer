@@ -74,13 +74,25 @@ module memory
 	input         mem_copy_rd
 );
 
+// the screen copy is written one clock later, off the bus timing path
+reg [13:0] vram_wa;
+reg  [1:0] vram_be;
+reg        vram_we;
+reg [15:0] vram_wd;
+always @(posedge clk_sys) begin
+	vram_wa <= {scr1_we, ram_addr[13:1]};
+	vram_be <= ram_wtbt;
+	vram_we <= ram_we & (scr0_we | scr1_we);
+	vram_wd <= ram_din;
+end
+
 vram vram
 (
 	.wrclock(clk_sys),
-	.wraddr({scr1_we, ram_addr[13:1]}),
-	.be(ram_wtbt),
-	.we(ram_we & (scr0_we | scr1_we)),
-	.data(ram_din),
+	.wraddr(vram_wa),
+	.be(vram_be),
+	.we(vram_we),
+	.data(vram_wd),
 
 	.rdclock(clk_vid),
 	.rdaddr(vram_addr),
