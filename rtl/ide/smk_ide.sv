@@ -204,7 +204,6 @@ localparam [5:0] DIV_STEPS = 6'd32;
 reg  [7:0]  geo_spt = DEF_SPT, geo_heads = DEF_HEADS;
 reg  [15:0] geo_cyl = 16'd0;
 reg         geo_hdr = 1'b0;          // the image starts with the .hdi header sector
-//wire [15:0] geo_hs = geo_spt * geo_heads;
 
 localparam [2:0] P_IDLE = 3'd0, P_REQ = 3'd1, P_WAIT = 3'd2, P_GEO = 3'd3, P_DIV = 3'd4, P_CYL = 3'd5;
 reg  [2:0]  pst = P_IDLE;
@@ -304,7 +303,14 @@ localparam [3:0] S_IDLE = 4'd0, S_RD_LBA1 = 4'd1, S_RD_LBA2 = 4'd2, S_RD_REQ = 4
 reg  [3:0]  st = S_IDLE;
 reg         id_mode = 1'b0;      // the data register reads the IDENTIFY sector
 reg         fmt_mode = 1'b0;     // FORMAT TRACK: the data written goes nowhere
-reg  [23:0] lba_t = 24'd0;
+reg  [31:0] lba_c = 32'd0;          // CHS: the cylinder's first sector
+reg  [15:0] lba_h = 16'd0;          // the head's first sector in it
+reg  [15:0] hs_r  = 16'd0;          // sectors per cylinder
+reg  [8:0]  sec0  = 9'd0;           // the sector register as an offset in the image
+always @(posedge clk_sys) begin
+	hs_r <= spt_r * heads_r;
+	sec0 <= {1'b0, cursector} - 9'd1 + {8'd0, geo_hdr};
+end
 reg  [31:0] eng_lba = 32'd0;
 reg         eng_rd = 1'b0, eng_wr = 1'b0;
 // read ahead: the bus wants the next sector (drained its own, or the
@@ -325,9 +331,7 @@ assign sd_wr = eng_wr;
 function [15:0] ident;
 	input [7:0] w;
 	input [15:0] cyl; input [7:0] hd; input [7:0] sp; input [31:0] total;
-	reg [15:0] hs;
 	begin
-		hs = hd * sp;
 		case (w)
 		8'd0:  ident = 16'h045a;
 		8'd1:  ident = cyl;
@@ -420,7 +424,7 @@ function [15:0] bk_word;
 			u = (w - 8'd3) >> 1;
 			case (w)
 			8'd0: bk_word = 16'd2;                         // boot from C:
-			8'd1: bk_word = spt_r * heads_r;
+			8'd1: bk_word = hs_r;
 			8'd2: bk_word = {heads_r - 8'd1, spt_r};
 			default: if (w >= 8'd3 && u < {4'd0, bk_np})
 				bk_word = w[0] ? bk_s[u[2:0]][15:0] : bk_s[u[2:0]][31:16];
@@ -493,11 +497,14 @@ task drive_reset;
 	end
 endtask
 
-// the data word the bus reads
+// the data word the bus reads, every source registered like the buffer
 // (a BKHD image holds the data as the software has it, a Samara one inverted)
-wire [15:0] rd_word = id_mode ? ident(bufoff, geo_cyl, heads_r, spt_r, data_secs) :
-					  !bk_on  ? bdout :
-					  syn_b[cur] ? ~bk_word(syn_k[cur], bufoff) : ~bdout;
+reg  [15:0] idw, bkw;
+always @(posedge clk_sys) begin
+	idw <= ident(bufoff, geo_cyl, heads_r, spt_r, data_secs);
+	bkw <= bk_word(syn_k[cur], bufoff);
+end
+wire [15:0] rd_word = id_mode ? idw : !bk_on ? bdout : syn_b[cur] ? ~bkw : ~bdout;
 // the drive address register: drive 0 selected, head bits, write gate off
 wire  [7:0] dar = {1'b1, 1'b1, ~curhead, 1'b1, 1'b0};
 // the head register's DEV bit: the slave, which is not there
@@ -693,12 +700,13 @@ always @(posedge clk_sys) begin
 				eng_lba <= {4'd0, lba_cur} + {31'd0, geo_hdr};
 				st      <= (st == S_RD_LBA1) ? S_RD_MAP : S_WR_MAP;
 			end else begin
-				lba_t <= curcyl * heads_r + {20'd0, curhead};
+				lba_c <= curcyl * hs_r;
+				lba_h <= curhead * spt_r;
 				st    <= (st == S_RD_LBA1) ? S_RD_LBA2 : S_WR_LBA2;
 			end
 		end
 		S_RD_LBA2, S_WR_LBA2: begin
-			eng_lba <= lba_t * spt_r + {24'd0, cursector} - 32'd1 + {31'd0, geo_hdr};
+			eng_lba <= lba_c + {16'd0, lba_h} + {{23{sec0[8]}}, sec0};
 			st      <= (st == S_RD_LBA2) ? S_RD_MAP : S_WR_MAP;
 		end
 		// a BKHD image: the block in the image, or a made-up one, which a
