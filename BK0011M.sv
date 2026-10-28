@@ -169,7 +169,7 @@ localparam CONF_STR =
 	"D2S2,DSKIMGBKD,Mount FDD B;",
 	"D3S3,DSKIMGBKD,Mount FDD C;",
 	"D3S4,DSKIMGBKD,Mount FDD D;",
-	"D4SC0,HDIHDS,Mount HDD;",
+	"D4SC0,HDIHDSVHD,Mount HDD;",
 	"-;",
 	"OIK,Disk controller,Standard,A16M,SMK512,Samara,None;",
 	"OH,FDD write protect,No,Yes;",
