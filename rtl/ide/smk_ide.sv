@@ -79,7 +79,9 @@ localparam [7:0] LAST_WORD = 8'd255;
 localparam       SECTOR_SHIFT = 9;    // bytes to sectors
 localparam [15:0] MAX_CYL = 16'hFFFF;
 localparam [7:0] DEF_HEADS = 8'd16, DEF_SPT = 8'd63;
-localparam       BK_PARTS = 8;        // BKHD partitions shown, C: to J:
+localparam       BK_PARTS = 64;       // BKHD partitions shown, as bkhdutil makes them
+localparam       BK_TW = $clog2(BK_PARTS + 1);   // a partition table index
+localparam       BK_KW = BK_TW + 1;              // a made-up sector's kind
 
 //------------------------------------------------------------------------
 // The bus
@@ -168,7 +170,17 @@ reg  [7:0]  p_sum;                   // the header's checksum: bytes 0..510 sum 
 reg         p_sig;
 reg  [15:0] p_bk0, p_bk1;
 reg  [7:0]  p_bkver;
-reg  [31:0] bk_tab[0:BK_PARTS];      // BKHD: the partition boundaries
+
+// BKHD: the partition table, where each partition begins and the last one
+// ends.  Two copies, one for finding the partition of a block, one for the
+// made-up table block the bus reads meanwhile.
+reg  [15:0] ta_lo[0:BK_PARTS], ta_hi[0:BK_PARTS], tb_lo[0:BK_PARTS], tb_hi[0:BK_PARTS];
+wire [7:0]  bt_x = sd_buff_addr - W_BK_TAB;
+wire [BK_TW-1:0] bt_w = bt_x[BK_TW:1];
+always @(posedge clk_sys) if(probing && sd_buff_wr && sd_ack && sd_buff_addr >= W_BK_TAB && sd_buff_addr < W_BK_END) begin
+	if(sd_buff_addr[0]) begin ta_hi[bt_w] <= sd_buff_dout; tb_hi[bt_w] <= sd_buff_dout; end
+	else                begin ta_lo[bt_w] <= sd_buff_dout; tb_lo[bt_w] <= sd_buff_dout; end
+end
 
 always @(posedge clk_sys) if(probing && sd_buff_wr && sd_ack) begin
 	case(sd_buff_addr)
@@ -183,10 +195,6 @@ always @(posedge clk_sys) if(probing && sd_buff_wr && sd_ack) begin
 	8'd2: p_bkver <= sd_buff_dout[7:0];
 	default: ;
 	endcase
-	if(sd_buff_addr >= W_BK_TAB && sd_buff_addr < W_BK_END) begin
-		if(sd_buff_addr[0]) bk_tab[(sd_buff_addr - W_BK_TAB) >> 1][31:16] <= sd_buff_dout;
-		else                bk_tab[(sd_buff_addr - W_BK_TAB) >> 1][15:0]  <= sd_buff_dout;
-	end
 	if(sd_buff_addr == 8'd0) p_sum <= sd_buff_dout[7:0] + sd_buff_dout[15:8];
 	else if(sd_buff_addr != W_LAST) p_sum <= p_sum + sd_buff_dout[7:0] + sd_buff_dout[15:8];
 	else p_sig <= (sd_buff_dout[7:0] == HDI_SIG) && (sd_buff_dout[15:8] == (8'd0 - (p_sum + sd_buff_dout[7:0])));
@@ -205,28 +213,24 @@ reg  [7:0]  geo_spt = DEF_SPT, geo_heads = DEF_HEADS;
 reg  [15:0] geo_cyl = 16'd0;
 reg         geo_hdr = 1'b0;          // the image starts with the .hdi header sector
 
-localparam [2:0] P_IDLE = 3'd0, P_REQ = 3'd1, P_WAIT = 3'd2, P_GEO = 3'd3, P_DIV = 3'd4, P_CYL = 3'd5;
+localparam [2:0] P_IDLE = 3'd0, P_REQ = 3'd1, P_WAIT = 3'd2, P_GEO = 3'd3, P_DIV = 3'd4, P_CYL = 3'd5,
+				 P_BKA = 3'd6, P_BKC = 3'd7;
 reg  [2:0]  pst = P_IDLE;
 reg         p_rd = 1'b0;
 reg         mounted = 1'b0;          // probed, with a geometry
 reg         bkhd = 1'b0;             // a BKHD image
-reg  [3:0]  bk_np = 4'd0;            // its partitions
+reg  [BK_TW-1:0] bk_np = {BK_TW{1'b0}};          // its partitions
 
 wire        p_bkhd = p_bk0 == "KB" && p_bk1 == "DH" && p_bkver == 8'd1;
 
+// the table read a word a clock: by the partition count at mount time,
+// then by the transfer engine
+reg  [BK_TW-1:0] pc_i = {BK_TW{1'b0}}, bk_i = {BK_TW{1'b0}};
+reg  [31:0] ta_q, pc_prev;
+always @(posedge clk_sys) ta_q <= {ta_hi[mounted ? bk_i : pc_i], ta_lo[mounted ? bk_i : pc_i]};
+
 // the partitions there are: each one ends after it begins
-function [3:0] bk_count;
-	input dummy;
-	integer i;
-	reg ok;
-	begin
-		bk_count = 4'd0;
-		ok = 1'b1;
-		for (i = 0; i < BK_PARTS; i = i + 1)
-			if (ok && bk_tab[i] != 32'd0 && bk_tab[i+1] > bk_tab[i]) bk_count = i[3:0] + 4'd1;
-			else ok = 1'b0;
-	end
-endfunction
+wire        pc_more = (pc_i == 0) ? ta_q != 32'd0 : ta_q > pc_prev;
 
 always @(posedge clk_sys) begin
 	if(dv_cnt != 6'd0) begin
@@ -243,10 +247,21 @@ always @(posedge clk_sys) begin
 		if(!acked) begin p_rd <= 1'b1; probing <= 1'b1; end
 		if(p_rd && acked) begin p_rd <= 1'b0; pst <= P_WAIT; end
 	end
-	P_WAIT: if(!acked) begin probing <= 1'b0; pst <= P_GEO; end
+	P_WAIT: if(!acked) begin
+		probing <= 1'b0;
+		pc_i    <= {BK_TW{1'b0}};
+		bk_np   <= {BK_TW{1'b0}};
+		pst     <= p_bkhd ? P_BKA : P_GEO;
+	end
+	P_BKA: pst <= P_BKC;
+	P_BKC: begin
+		pc_prev <= ta_q;
+		if (pc_more && pc_i != 0) bk_np <= pc_i;
+		if (pc_more && pc_i != BK_PARTS) begin pc_i <= pc_i + 1'd1; pst <= P_BKA; end
+		else pst <= P_GEO;
+	end
 	P_GEO: begin
-		bkhd  <= p_bkhd && bk_count(1'b0) != 4'd0;
-		bk_np <= bk_count(1'b0);
+		bkhd  <= p_bkhd && bk_np != 0;
 		if(p_sig && p_heads[7:0] != 8'd0 && p_heads[7:0] <= 8'd16 && p_spt[7:0] != 8'd0 && p_spt[15:8] == 8'd0) begin
 			geo_hdr   <= 1'b1;
 			geo_spt   <= p_spt[7:0];
@@ -298,8 +313,8 @@ reg  [7:0]  resetcnt = 8'd0;
 // Transfer engine states
 localparam [3:0] S_IDLE = 4'd0, S_RD_LBA1 = 4'd1, S_RD_LBA2 = 4'd2, S_RD_REQ = 4'd3,
 				 S_RD_WAIT = 4'd4, S_WR_LBA1 = 4'd5, S_WR_LBA2 = 4'd6, S_WR_REQ = 4'd7,
-				 S_WR_WAIT = 4'd8, S_RD_MAP = 4'd9, S_WR_MAP = 4'd10, S_RD_MAP2 = 4'd11,
-				 S_WR_MAP2 = 4'd12;
+				 S_WR_WAIT = 4'd8, S_RD_MAP = 4'd9, S_WR_MAP = 4'd10, S_MAP_RAM = 4'd11,
+				 S_MAP_SUM = 4'd12, S_MAP_CMP = 4'd13;
 reg  [3:0]  st = S_IDLE;
 reg         id_mode = 1'b0;      // the data register reads the IDENTIFY sector
 reg         fmt_mode = 1'b0;     // FORMAT TRACK: the data written goes nowhere
@@ -392,58 +407,15 @@ wire [27:0] lba_nxt  = lba_cur + 28'd1;
 // descriptor at block s_i = start_i + 2 + i and its data right after, the
 // image's start_i on.  Block 1 is the table, blocks 0 and 2 empty.
 wire        bk_on = bkhd & samara;
-localparam [3:0] BK_TABLE = 4'd8, BK_EMPTY = 4'd9;   // made-up sector kinds; 0..7 a descriptor
+localparam [BK_KW-1:0] BK_TABLE = BK_PARTS, BK_EMPTY = BK_PARTS + 1;   // made-up sector kinds; below, a descriptor
 localparam [15:0] BK_PARAM = 16'o2000, BK_LOAD = 16'o1000, BK_REG16 = 16'o14400;   // as SRV writes them
 
-// worked out once the table is there; registered, they settle long before
-// the first access
-reg  [31:0] bk_s[0:BK_PARTS-1];      // the descriptor block
-reg  [31:0] bk_e[0:BK_PARTS-1];      // the block after the partition
-reg  [15:0] bk_vol[0:BK_PARTS-1];    // the data blocks
-genvar gi;
-generate for (gi = 0; gi < BK_PARTS; gi = gi + 1) begin : bkp
-	wire [31:0] len = bk_tab[gi+1] - bk_tab[gi];
-	always @(posedge clk_sys) begin
-		bk_s[gi]   <= bk_tab[gi] + 32'd2 + gi;
-		bk_e[gi]   <= bk_tab[gi+1] + 32'd3 + gi;
-		bk_vol[gi] <= |len[31:16] ? 16'hFFFF : len[15:0];
-	end
-end endgenerate
-
-reg         syn_b[0:1];              // the bank holds a made-up sector
-reg  [3:0]  syn_k[0:1];              // of this kind
-
-// a made-up sector's words, as the software has them
-function [15:0] bk_word;
-	input [3:0] k;
-	input [7:0] w;
-	reg   [7:0] u;
-	begin
-		bk_word = 16'd0;
-		if (k == BK_TABLE) begin
-			u = (w - 8'd3) >> 1;
-			case (w)
-			8'd0: bk_word = 16'd2;                         // boot from C:
-			8'd1: bk_word = hs_r;
-			8'd2: bk_word = {heads_r - 8'd1, spt_r};
-			default: if (w >= 8'd3 && u < {4'd0, bk_np})
-				bk_word = w[0] ? bk_s[u[2:0]][15:0] : bk_s[u[2:0]][31:16];
-			endcase
-		end else if (k < BK_TABLE)
-			case (w)
-			8'd0: bk_word = 16'd2 + k;
-			8'd1: bk_word = bk_vol[k[2:0]];
-			8'd3: bk_word = BK_PARAM;
-			8'd4: bk_word = BK_LOAD;
-			8'd5: bk_word = BK_REG16;
-			8'd6: bk_word = bk_s[k[2:0]][15:0];
-			8'd7: bk_word = bk_s[k[2:0]][31:16];
-			8'd8: bk_word = bk_e[k[2:0]][15:0];
-			8'd9: bk_word = bk_e[k[2:0]][31:16];
-			default: ;
-			endcase
-	end
-endfunction
+// per buffer bank: a made-up sector, its kind, and for a descriptor the
+// partition's descriptor block, the block after it and its data blocks
+reg         syn_b[0:1];
+reg  [BK_KW-1:0] syn_k[0:1];
+reg  [31:0] syn_s[0:1], syn_e[0:1];
+reg  [15:0] syn_vol[0:1];
 
 // next sector: CHS, or the LBA counted up
 task next_sector;
@@ -497,12 +469,46 @@ task drive_reset;
 	end
 endtask
 
+// a made-up sector's words, as the software has them; the table block's
+// entry for unit 2+u comes from the second copy of the partition table
+wire [7:0]  bk_u = (bufoff - 8'd3) >> 1;
+reg  [31:0] tb_q;
+reg  [7:0]  bk_w, bk_wu;
+reg         bk_wue;
+always @(posedge clk_sys) begin
+	tb_q   <= {tb_hi[bk_u[BK_TW-1:0]], tb_lo[bk_u[BK_TW-1:0]]};
+	bk_w   <= bufoff;
+	bk_wu  <= bk_u;
+	bk_wue <= bufoff >= 8'd3 && bk_u < {{(8-BK_TW){1'b0}}, bk_np};
+end
+wire [31:0] bk_su = tb_q + 32'd2 + {24'd0, bk_wu};
+
 // the data word the bus reads, every source registered like the buffer
 // (a BKHD image holds the data as the software has it, a Samara one inverted)
 reg  [15:0] idw, bkw;
 always @(posedge clk_sys) begin
 	idw <= ident(bufoff, geo_cyl, heads_r, spt_r, data_secs);
-	bkw <= bk_word(syn_k[cur], bufoff);
+	bkw <= 16'd0;
+	if (syn_k[cur] == BK_TABLE)
+		case (bk_w)
+		8'd0: bkw <= 16'd2;                            // boot from C:
+		8'd1: bkw <= hs_r;
+		8'd2: bkw <= {heads_r - 8'd1, spt_r};
+		default: if (bk_wue) bkw <= bk_w[0] ? bk_su[15:0] : bk_su[31:16];
+		endcase
+	else if (syn_k[cur] < BK_TABLE)
+		case (bk_w)
+		8'd0: bkw <= 16'd2 + {{(16-BK_KW){1'b0}}, syn_k[cur]};
+		8'd1: bkw <= syn_vol[cur];
+		8'd3: bkw <= BK_PARAM;
+		8'd4: bkw <= BK_LOAD;
+		8'd5: bkw <= BK_REG16;
+		8'd6: bkw <= syn_s[cur][15:0];
+		8'd7: bkw <= syn_s[cur][31:16];
+		8'd8: bkw <= syn_e[cur][15:0];
+		8'd9: bkw <= syn_e[cur][31:16];
+		default: ;
+		endcase
 end
 wire [15:0] rd_word = id_mode ? idw : !bk_on ? bdout : syn_b[cur] ? ~bkw : ~bdout;
 // the drive address register: drive 0 selected, head bits, write gate off
@@ -510,10 +516,12 @@ wire  [7:0] dar = {1'b1, 1'b1, ~curhead, 1'b1, 1'b0};
 // the head register's DEV bit: the slave, which is not there
 wire        dev1 = curheadreg[4];
 
-reg  [BK_PARTS-1:0] bk_ge, bk_eq;   // the block is at / past partition i's start
-reg         bk_low;                  // before the first partition
-reg  [2:0]  bk_part;
-integer     bi;
+// finding a block's partition: the last one whose descriptor block it is
+// at or past, or none
+reg         map_wr;
+reg  [BK_TW-1:0] bk_p;
+reg  [31:0] bk_t, bk_si, bk_tp, bk_sp;   // table entry i, descriptor block i; the same for the partition
+wire [31:0] bk_len = bk_t - bk_tp;
 
 always @(posedge clk_sys) begin
 	old_stb <= bus_stb;
@@ -710,29 +718,42 @@ always @(posedge clk_sys) begin
 			st      <= (st == S_RD_LBA2) ? S_RD_MAP : S_WR_MAP;
 		end
 		// a BKHD image: the block in the image, or a made-up one, which a
-		// read takes from bk_word and a write drops.  First where the block
-		// falls, then what it is.
+		// read takes from bkw and a write drops.  The partitions are gone
+		// through one by one, three clocks each.
 		S_RD_MAP, S_WR_MAP: begin
 			if (st == S_RD_MAP) syn_b[fbank] <= 1'b0;
-			for (bi = 0; bi < BK_PARTS; bi = bi + 1) begin
-				bk_ge[bi] <= bi < bk_np && eng_lba >= bk_s[bi];
-				bk_eq[bi] <= eng_lba == bk_s[bi];
-			end
-			bk_low <= eng_lba < bk_s[0];
+			map_wr <= st == S_WR_MAP;
+			bk_i   <= {BK_TW{1'b0}};
 			if (!bk_on) st <= (st == S_RD_MAP) ? S_RD_REQ : S_WR_REQ;
-			else        st <= (st == S_RD_MAP) ? S_RD_MAP2 : S_WR_MAP2;
+			else        st <= S_MAP_RAM;
 		end
-		S_RD_MAP2, S_WR_MAP2: begin
-			bk_part = 3'd0;
-			for (bi = 1; bi < BK_PARTS; bi = bi + 1)
-				if (bk_ge[bi]) bk_part = bi[2:0];
-			if (bk_low || bk_eq[bk_part]) begin
-				if (st == S_RD_MAP2) syn_b[fbank] <= 1'b1;
-				syn_k[fbank] <= (eng_lba == 32'd1) ? BK_TABLE : bk_low ? BK_EMPTY : {1'b0, bk_part};
-				st           <= (st == S_RD_MAP2) ? S_RD_WAIT : S_WR_WAIT;
+		S_MAP_RAM: st <= S_MAP_SUM;
+		S_MAP_SUM: begin
+			bk_t  <= ta_q;
+			bk_si <= ta_q + 32'd2 + {{(32-BK_TW){1'b0}}, bk_i};
+			st    <= S_MAP_CMP;
+		end
+		S_MAP_CMP: begin
+			if (bk_i < bk_np && eng_lba >= bk_si) begin
+				bk_p  <= bk_i;
+				bk_sp <= bk_si;
+				bk_tp <= bk_t;
+				bk_i  <= bk_i + 1'd1;
+				st    <= S_MAP_RAM;
+			end else if (bk_i == 0 || eng_lba == bk_sp) begin
+				// made up: the table, an empty block, or partition bk_p's
+				// descriptor, the next entry now in bk_t / bk_si
+				if (!map_wr) begin
+					syn_b[fbank]   <= 1'b1;
+					syn_k[fbank]   <= (bk_i != 0) ? {1'b0, bk_p} : (eng_lba == 32'd1) ? BK_TABLE : BK_EMPTY;
+					syn_s[fbank]   <= bk_sp;
+					syn_e[fbank]   <= bk_si;
+					syn_vol[fbank] <= |bk_len[31:16] ? 16'hFFFF : bk_len[15:0];
+				end
+				st <= map_wr ? S_WR_WAIT : S_RD_WAIT;
 			end else begin
-				eng_lba <= eng_lba - 32'd3 - bk_part;
-				st      <= (st == S_RD_MAP2) ? S_RD_REQ : S_WR_REQ;
+				eng_lba <= eng_lba - 32'd3 - {{(32-BK_TW){1'b0}}, bk_p};
+				st      <= map_wr ? S_WR_REQ : S_RD_REQ;
 			end
 		end
 		// hps_io takes the request, raises sd_ack for the transfer and
