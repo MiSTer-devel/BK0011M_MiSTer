@@ -117,8 +117,10 @@ always @(posedge CLK_VIDEO) begin
 		if(!hc[0]) begin
 			dots <= {2'b00, dots[15:2]};
 			hbr <= {1'b0, hbr[7:1]};
-			if(!hc[9] && !(vc[8:6] & {1'b1, {2{~full_screen}}}) && !hc[3:1]) dots <= vram_data;
-			if(!hc[9] && !hc[3:1]) hbr <= 8'hFF;
+			// a word shows up 10 dots after its fetch slot starts,
+			// so palette writes timed by the CPU hit the right pixels
+			if(!hc[9] && !(vc[8:6] & {1'b1, {2{~full_screen}}}) && hc[3:1] == 3'd5) dots <= vram_data;
+			if(!hc[9] && hc[3:1] == 3'd5) hbr <= 8'hFF;
 		end
 	end
 end
